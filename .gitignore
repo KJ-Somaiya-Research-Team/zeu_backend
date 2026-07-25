@@ -1,0 +1,17 @@
+# Environment variable files (NEVER commit secrets to git)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependency directories
+node_modules/
+
+# VS Code directory (optional sensitive config)
+.vscode/
+
+# Logs and OS files
+*.log
+npm-debug.log*
+.DS_Store

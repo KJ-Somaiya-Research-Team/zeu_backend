@@ -1,11 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-let ai = null;
 const getAiClient = () => {
-  if (!ai) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || 'DUMMY_KEY_FOR_INIT' });
-  }
-  return ai;
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 };
 
 // Enable CORS helper for Vercel Serverless
@@ -74,7 +70,7 @@ const handler = async (req, res) => {
     const systemPrompt = buildSystemPrompt(classification);
     
     // Choose model based on environment variable or classification
-    const defaultModel = process.env.GEMINI_API_MODEL || 'gemini-3.5-flash';
+    const defaultModel = process.env.GEMINI_API_MODEL || 'gemini-3.6-flash';
     const targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : defaultModel;
 
     const aiClient = getAiClient();

@@ -67,7 +67,7 @@ All protected endpoints require an `Authorization` header with a Bearer token.
 | `Content-Type` | `application/json` | Yes (for JSON endpoints) |
 
 **Token Lifecycle:**
-- Tokens are issued by the startup's own auth system (e.g., NextAuth, Clerk, Firebase Auth).
+- Tokens are issued by the Node.js JWT authentication system.
 - The Zeu backend validates tokens via middleware before processing requests.
 - Token expiry: Configurable (recommended 24h for customers, 8h for agents).
 
@@ -859,7 +859,7 @@ const res = await fetch('https://zeu-backend-dgex.vercel.app/api/feedback', {
 
 ## 9. Frontend Architecture & UI Blueprint (React + Vite on VPS)
 
-> **Architecture:** The Zeu frontend is a standalone React SPA built with Vite. It is deployed on a VPS (e.g., DigitalOcean, AWS EC2, Hostinger) and consumes the Zeu Node.js backend hosted on Vercel via REST API calls. The backend and frontend are fully decoupled.
+> **Architecture:** The Zeu frontend is a standalone React SPA. It is deployed on a Linux VPS using Nginx and consumes the Zeu Node.js backend via REST API calls. The backend and frontend are fully decoupled.
 
 ### 9.1. Recommended Tech Stack
 
@@ -873,9 +873,9 @@ const res = await fetch('https://zeu-backend-dgex.vercel.app/api/feedback', {
 | **State Management** | Zustand | Lightweight global store for chat & auth state. |
 | **Data Fetching** | TanStack React Query v5 | Caching, polling, background refetch for API calls. |
 | **Real-Time** | Server-Sent Events (SSE) / Polling | Streaming AI responses and live status updates. |
-| **Auth** | Firebase Auth / Clerk / Custom JWT | Token-based auth. Store JWT in memory or `httpOnly` cookie. |
-| **HTTP Client** | Native `fetch` or `axios` | Direct REST calls to the Vercel backend. |
-| **Hosting** | VPS (DigitalOcean / AWS EC2 / Hostinger) | Full control. Served via Nginx as static files. |
+| **Auth** | Node.js JWT Auth | Bearer token authentication. |
+| **HTTP Client** | Native `fetch` or `axios` | Direct REST calls to the Node.js backend. |
+| **Hosting** | Linux VPS (Nginx) | Served as static production build assets via Nginx. |
 
 ### 9.2. Project Scaffolding (Terminal Commands)
 

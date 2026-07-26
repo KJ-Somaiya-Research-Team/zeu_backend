@@ -1,7 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
-const allowCors = require('../../utils/cors');
-const store = require('../../utils/store');
-const { logResearchEvent } = require('../../utils/logger');
+const allowCors = require('../utils/cors');
+const store = require('../utils/store');
+const { logResearchEvent } = require('../utils/logger');
 
 // Initialize — explicitly pass key for production reliability
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });

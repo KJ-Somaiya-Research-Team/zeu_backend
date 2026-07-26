@@ -1,6 +1,6 @@
-const allowCors = require('../../utils/cors');
-const store = require('../../utils/store');
-const { logResearchEvent } = require('../../utils/logger');
+const allowCors = require('../utils/cors');
+const store = require('../utils/store');
+const { logResearchEvent } = require('../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {

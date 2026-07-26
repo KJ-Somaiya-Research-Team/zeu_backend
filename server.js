@@ -1,12 +1,23 @@
 try {
   process.loadEnvFile();
 } catch (e) {
-  // Ignore if .env is missing (e.g. in cloud production where env vars are injected)
+  // Ignore if .env is missing
 }
 
 const http = require('http');
 const generateHandler = require('./api/generate');
 const feedbackHandler = require('./api/feedback');
+
+// Import v1 handlers
+const startSessionHandler = require('./api/v1/chat/session/start');
+const chatMessageHandler = require('./api/v1/chat/message');
+const chatHistoryHandler = require('./api/v1/chat/history/[sessionId]');
+const chatStatusHandler = require('./api/v1/chat/status/[sessionId]');
+const transferHandler = require('./api/v1/chat/transfer-to-human');
+const resolveHandler = require('./api/v1/chat/resolve');
+const agentQueueHandler = require('./api/v1/agent/queue');
+const claimTicketHandler = require('./api/v1/agent/claim-ticket');
+const agentMessageHandler = require('./api/v1/agent/message');
 
 const PORT = process.env.PORT || 3000;
 
@@ -27,9 +38,11 @@ const server = http.createServer((req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost:' + PORT}`);
+  const pathname = url.pathname;
 
-  if (url.pathname === '/api/generate') {
-    if (req.method === 'POST') {
+  // Helper to parse JSON body for POST/PUT requests
+  const runWithJsonBody = (handler) => {
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
       let body = '';
       req.on('data', (chunk) => {
         body += chunk.toString();
@@ -40,19 +53,63 @@ const server = http.createServer((req, res) => {
         } catch (e) {
           req.body = {};
         }
-        generateHandler(req, res);
+        handler(req, res);
       });
     } else {
-      generateHandler(req, res);
+      handler(req, res);
     }
-  } else if (url.pathname === '/api/feedback') {
-    // Feedback endpoint uses multiparty to parse raw req stream
+  };
+
+  // Route matching
+  if (pathname === '/api/generate') {
+    runWithJsonBody(generateHandler);
+  } else if (pathname === '/api/feedback') {
     feedbackHandler(req, res);
-  } else if (url.pathname === '/' || url.pathname === '/api') {
+  } else if (pathname === '/api/v1/chat/session/start') {
+    runWithJsonBody(startSessionHandler);
+  } else if (pathname === '/api/v1/chat/message') {
+    runWithJsonBody(chatMessageHandler);
+  } else if (pathname.startsWith('/api/v1/chat/history/')) {
+    const sessionId = pathname.replace('/api/v1/chat/history/', '').split('?')[0];
+    req.query = req.query || {};
+    url.searchParams.forEach((val, key) => { req.query[key] = val; });
+    req.query.sessionId = sessionId;
+    runWithJsonBody(chatHistoryHandler);
+  } else if (pathname.startsWith('/api/v1/chat/status/')) {
+    const sessionId = pathname.replace('/api/v1/chat/status/', '').split('?')[0];
+    req.query = req.query || {};
+    url.searchParams.forEach((val, key) => { req.query[key] = val; });
+    req.query.sessionId = sessionId;
+    runWithJsonBody(chatStatusHandler);
+  } else if (pathname === '/api/v1/chat/transfer-to-human') {
+    runWithJsonBody(transferHandler);
+  } else if (pathname === '/api/v1/chat/resolve') {
+    runWithJsonBody(resolveHandler);
+  } else if (pathname === '/api/v1/agent/queue') {
+    req.query = req.query || {};
+    url.searchParams.forEach((val, key) => { req.query[key] = val; });
+    runWithJsonBody(agentQueueHandler);
+  } else if (pathname === '/api/v1/agent/claim-ticket') {
+    runWithJsonBody(claimTicketHandler);
+  } else if (pathname === '/api/v1/agent/message') {
+    runWithJsonBody(agentMessageHandler);
+  } else if (pathname === '/' || pathname === '/api') {
     res.status(200).json({
       status: 'online',
       message: 'Zeu Chatbot API Backend is running!',
-      endpoints: ['POST /api/generate', 'POST /api/feedback']
+      endpoints: [
+        'POST /api/generate',
+        'POST /api/feedback',
+        'POST /api/v1/chat/session/start',
+        'POST /api/v1/chat/message',
+        'GET /api/v1/chat/history/:sessionId',
+        'GET /api/v1/chat/status/:sessionId',
+        'POST /api/v1/chat/transfer-to-human',
+        'GET /api/v1/agent/queue',
+        'POST /api/v1/agent/claim-ticket',
+        'POST /api/v1/agent/message',
+        'POST /api/v1/chat/resolve'
+      ]
     });
   } else {
     res.status(404).json({ error: 'Endpoint Not Found' });
@@ -61,7 +118,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`🚀 Zeu Backend Server running locally at http://localhost:${PORT}`);
-  console.log(`📍 Health Check: GET  http://localhost:${PORT}/`);
-  console.log(`📍 AI Generate:  POST http://localhost:${PORT}/api/generate`);
-  console.log(`📍 Feedback:     POST http://localhost:${PORT}/api/feedback`);
+  console.log(`📍 Health Check: GET http://localhost:${PORT}/`);
+  console.log(`📍 All v1 endpoints are active and mapped!`);
 });

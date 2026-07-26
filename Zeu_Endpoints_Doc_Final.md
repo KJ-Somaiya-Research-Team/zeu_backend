@@ -857,77 +857,406 @@ const res = await fetch('https://zeu-backend-dgex.vercel.app/api/feedback', {
 
 ---
 
-## 9. Frontend Architecture & UI Blueprint
+## 9. Frontend Architecture & UI Blueprint (React + Vite on VPS)
+
+> **Architecture:** The Zeu frontend is a standalone React SPA built with Vite. It is deployed on a VPS (e.g., DigitalOcean, AWS EC2, Hostinger) and consumes the Zeu Node.js backend hosted on Vercel via REST API calls. The backend and frontend are fully decoupled.
 
 ### 9.1. Recommended Tech Stack
 
 | Layer | Technology | Rationale |
 |---|---|---|
-| **Framework** | Next.js 15+ (App Router) | Server components, API routes, SSR/ISR. |
-| **Styling** | Tailwind CSS v4 + Shadcn UI | Rapid, consistent, accessible UI components. |
-| **State Management** | Zustand | Lightweight global store for chat state. |
-| **Data Fetching** | TanStack React Query v5 | Caching, polling, mutations for API calls. |
-| **Real-Time** | Server-Sent Events (SSE) | Streaming AI responses and status updates. |
-| **Auth** | NextAuth.js v5 / Clerk | JWT-based auth for customers and agents. |
+| **Build Tool** | Vite 6+ | Blazing fast HMR, optimized production builds, native ESM. |
+| **UI Library** | React 19 | Industry standard SPA library. |
+| **Language** | TypeScript | Type safety across API contracts. |
+| **Routing** | React Router v7 | Client-side routing for SPA pages. |
+| **Styling** | Tailwind CSS v4 | Utility-first CSS for rapid, consistent UI. |
+| **State Management** | Zustand | Lightweight global store for chat & auth state. |
+| **Data Fetching** | TanStack React Query v5 | Caching, polling, background refetch for API calls. |
+| **Real-Time** | Server-Sent Events (SSE) / Polling | Streaming AI responses and live status updates. |
+| **Auth** | Firebase Auth / Clerk / Custom JWT | Token-based auth. Store JWT in memory or `httpOnly` cookie. |
+| **HTTP Client** | Native `fetch` or `axios` | Direct REST calls to the Vercel backend. |
+| **Hosting** | VPS (DigitalOcean / AWS EC2 / Hostinger) | Full control. Served via Nginx as static files. |
 
-### 9.2. Environment Configuration (`.env.local`)
+### 9.2. Project Scaffolding (Terminal Commands)
+
+```bash
+# 1. Create the Vite + React + TypeScript project
+npx -y create-vite@latest zeu-frontend -- --template react-ts
+cd zeu-frontend
+
+# 2. Install core dependencies
+npm install react-router-dom zustand @tanstack/react-query axios
+
+# 3. Install Tailwind CSS v4
+npm install tailwindcss @tailwindcss/vite
+```
+
+Add Tailwind to `vite.config.ts`:
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+});
+```
+
+Add to `src/index.css`:
+```css
+@import "tailwindcss";
+```
+
+### 9.3. Environment Configuration (`.env`)
+
+Create a `.env` file in the project root. Vite exposes variables prefixed with `VITE_` to client-side code.
 
 ```env
-NEXT_PUBLIC_API_URL=https://zeu-backend-dgex.vercel.app
-NEXT_PUBLIC_WS_URL=wss://zeu-backend-dgex.vercel.app
-NEXT_PUBLIC_APP_NAME=Zeu
-NEXTAUTH_SECRET=your_nextauth_secret_here
-NEXTAUTH_URL=http://localhost:3000
+# Zeu Backend (Vercel — managed by Sahil)
+VITE_API_BASE_URL=https://zeu-backend-dgex.vercel.app
+
+# App Config
+VITE_APP_NAME=Zeu
+VITE_APP_VERSION=1.0.0
 ```
 
-### 9.3. Core Component Tree
-
-```
-src/
-├── app/
-│   ├── layout.tsx
-│   ├── page.tsx                    # Landing/Home
-│   ├── chat/
-│   │   └── page.tsx                # Customer chat view
-│   └── agent/
-│       ├── dashboard/
-│       │   └── page.tsx            # Agent dashboard
-│       └── chat/[sessionId]/
-│           └── page.tsx            # Agent active chat
-├── components/
-│   ├── chat/
-│   │   ├── ChatWidget.tsx          # Floating chat toggle button
-│   │   ├── ChatWindow.tsx          # Full chat container
-│   │   ├── MessageBubble.tsx       # Individual message (user/bot/agent)
-│   │   ├── MessageList.tsx         # Scrollable message history
-│   │   ├── ChatInput.tsx           # Text input + send button
-│   │   ├── TypingIndicator.tsx     # Animated "Bot is typing..."
-│   │   ├── StatusBadge.tsx         # Shows AI_ACTIVE / PENDING_HUMAN / etc.
-│   │   ├── TransferBanner.tsx      # "Connecting to agent..." overlay
-│   │   └── FeedbackModal.tsx       # Post-resolution rating modal
-│   ├── agent/
-│   │   ├── QueuePanel.tsx          # List of pending tickets
-│   │   ├── TicketCard.tsx          # Individual ticket preview
-│   │   ├── ActiveChatThread.tsx    # Agent's live chat view
-│   │   ├── CustomerSidebar.tsx     # Order context & history
-│   │   ├── QuickReplies.tsx        # Macro/template buttons
-│   │   └── ResolveDialog.tsx       # Close/resolve ticket modal
-│   └── ui/                         # Shadcn UI primitives
-├── hooks/
-│   ├── useChat.ts                  # Chat session lifecycle hook
-│   ├── useChatStatus.ts           # Polling hook for session status
-│   ├── useAgentQueue.ts           # Agent queue data hook
-│   └── useSSE.ts                  # Server-Sent Events hook
-├── stores/
-│   └── chatStore.ts               # Zustand store for chat state
-├── lib/
-│   ├── api.ts                     # API client (fetch wrapper)
-│   └── constants.ts               # Status enums, config values
-└── types/
-    └── chat.ts                    # TypeScript interfaces
+Access in code:
+```typescript
+const API_URL = import.meta.env.VITE_API_BASE_URL;
 ```
 
-### 9.4. Chat State Machine (UI Transitions)
+### 9.4. Folder Structure
+
+```
+zeu-frontend/
+├── public/
+│   └── favicon.svg
+├── src/
+│   ├── main.tsx                       # Entry point
+│   ├── App.tsx                        # Root component + Router
+│   ├── index.css                      # Tailwind import
+│   │
+│   ├── api/
+│   │   └── client.ts                  # Centralized API client (fetch wrapper)
+│   │
+│   ├── pages/
+│   │   ├── HomePage.tsx               # Landing page
+│   │   ├── ChatPage.tsx               # Customer chat full-page view
+│   │   └── AgentDashboardPage.tsx     # Support agent portal
+│   │
+│   ├── components/
+│   │   ├── chat/
+│   │   │   ├── ChatWidget.tsx         # Floating toggle button (bottom-right)
+│   │   │   ├── ChatWindow.tsx         # Full chat container
+│   │   │   ├── MessageBubble.tsx      # Individual message (user/bot/agent)
+│   │   │   ├── MessageList.tsx        # Scrollable message history
+│   │   │   ├── ChatInput.tsx          # Text input + send button
+│   │   │   ├── TypingIndicator.tsx    # Animated "Bot is typing..."
+│   │   │   ├── StatusBadge.tsx        # AI_ACTIVE / PENDING_HUMAN / etc.
+│   │   │   ├── TransferBanner.tsx     # "Connecting to agent..." overlay
+│   │   │   └── FeedbackModal.tsx      # Post-resolution star rating modal
+│   │   │
+│   │   └── agent/
+│   │       ├── QueuePanel.tsx         # List of pending tickets
+│   │       ├── TicketCard.tsx         # Individual ticket preview card
+│   │       ├── ActiveChatThread.tsx   # Agent's live chat view
+│   │       ├── CustomerSidebar.tsx    # Order context & AI summary
+│   │       ├── QuickReplies.tsx       # Macro/template buttons
+│   │       └── ResolveDialog.tsx      # Close/resolve ticket modal
+│   │
+│   ├── hooks/
+│   │   ├── useChat.ts                 # Chat session lifecycle hook
+│   │   ├── useChatStatus.ts           # Polling hook for session status
+│   │   └── useAgentQueue.ts           # Agent queue data hook
+│   │
+│   ├── stores/
+│   │   └── chatStore.ts              # Zustand global chat state
+│   │
+│   ├── types/
+│   │   └── chat.ts                   # TypeScript interfaces & enums
+│   │
+│   └── lib/
+│       └── constants.ts              # Status enums, config values
+│
+├── .env                               # Environment variables
+├── vite.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
+```
+
+### 9.5. Centralized API Client (`src/api/client.ts`)
+
+This is the single source of truth for all HTTP calls to the Zeu Vercel backend. Every component and hook should import from here.
+
+```typescript
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// Helper to get auth token (from your auth system)
+const getToken = (): string | null => {
+  return localStorage.getItem('zeu_auth_token');
+};
+
+// Generic request function
+async function request<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// ─── AI CHAT ENDPOINTS ───────────────────────────────
+
+/** Legacy endpoint (currently deployed and live) */
+export const sendAIMessage = (prompt: string, classification = 'STANDARD', history: any[] = []) =>
+  request<{ success: boolean; reply: string; is_transfer: boolean; model_used: string }>(
+    '/api/generate',
+    {
+      method: 'POST',
+      body: JSON.stringify({ prompt, classification, history }),
+    }
+  );
+
+/** v1: Start a new chat session */
+export const startChatSession = (userId: string, platform = 'web', language = 'en') =>
+  request<{ success: boolean; sessionId: string; status: string; welcomeMessage: string }>(
+    '/api/v1/chat/session/start',
+    {
+      method: 'POST',
+      body: JSON.stringify({ userId, platform, language }),
+    }
+  );
+
+/** v1: Send message within a session */
+export const sendSessionMessage = (sessionId: string, message: string, stream = false) =>
+  request<{ success: boolean; reply: string; is_transfer: boolean; model_used: string; timestamp: string }>(
+    '/api/v1/chat/message',
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, message, stream }),
+    }
+  );
+
+/** v1: Fetch chat history */
+export const getChatHistory = (sessionId: string, limit = 50) =>
+  request<{ success: boolean; messages: any[] }>(
+    `/api/v1/chat/history/${sessionId}?limit=${limit}`
+  );
+
+/** v1: Get session status (for polling) */
+export const getChatStatus = (sessionId: string) =>
+  request<{ success: boolean; status: string; agentInfo?: any; queuePosition?: number }>(
+    `/api/v1/chat/status/${sessionId}`
+  );
+
+// ─── HUMAN TRANSFER ENDPOINTS ────────────────────────
+
+/** v1: Transfer to human agent */
+export const transferToHuman = (sessionId: string, reason: string) =>
+  request<{ success: boolean; ticketId: string; queuePosition: number; estimatedWaitMinutes: number }>(
+    '/api/v1/chat/transfer-to-human',
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, reason }),
+    }
+  );
+
+/** v1: Get agent queue */
+export const getAgentQueue = (status = 'PENDING_HUMAN') =>
+  request<{ success: boolean; queueLength: number; tickets: any[] }>(
+    `/api/v1/agent/queue?status=${status}`
+  );
+
+/** v1: Agent claims a ticket */
+export const claimTicket = (ticketId: string, agentId: string) =>
+  request<{ success: boolean; sessionId: string; status: string; customerContext: any }>(
+    '/api/v1/agent/claim-ticket',
+    {
+      method: 'POST',
+      body: JSON.stringify({ ticketId, agentId }),
+    }
+  );
+
+/** v1: Agent sends a message */
+export const sendAgentMessage = (sessionId: string, agentId: string, message: string, actionType = 'text') =>
+  request<{ success: boolean; messageId: string }>(
+    '/api/v1/agent/message',
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, agentId, message, actionType }),
+    }
+  );
+
+/** v1: Resolve/close session */
+export const resolveSession = (sessionId: string, agentId: string, resolution: string, agentNotes = '') =>
+  request<{ success: boolean; status: string }>(
+    '/api/v1/chat/resolve',
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, agentId, resolution, agentNotes }),
+    }
+  );
+
+// ─── FEEDBACK ENDPOINT ───────────────────────────────
+
+/** Submit multipart feedback (uses FormData, no JSON Content-Type) */
+export const submitFeedback = (formData: FormData) =>
+  fetch(`${BASE_URL}/api/feedback`, {
+    method: 'POST',
+    body: formData, // Browser auto-sets Content-Type with boundary
+  }).then((res) => res.json());
+```
+
+### 9.6. Zustand Chat Store (`src/stores/chatStore.ts`)
+
+```typescript
+import { create } from 'zustand';
+import * as api from '../api/client';
+
+type ChatStatus = 'IDLE' | 'AI_ACTIVE' | 'PENDING_HUMAN' | 'HUMAN_CONNECTED' | 'CLOSED';
+
+interface Message {
+  id: string;
+  role: 'user' | 'model' | 'agent';
+  content: string;
+  timestamp: string;
+}
+
+interface ChatState {
+  sessionId: string | null;
+  status: ChatStatus;
+  messages: Message[];
+  isLoading: boolean;
+  queuePosition: number | null;
+  agentName: string | null;
+
+  startSession: (userId: string) => Promise<void>;
+  sendMessage: (text: string) => Promise<void>;
+  requestHuman: (reason: string) => Promise<void>;
+  pollStatus: () => Promise<void>;
+  reset: () => void;
+}
+
+export const useChatStore = create<ChatState>((set, get) => ({
+  sessionId: null,
+  status: 'IDLE',
+  messages: [],
+  isLoading: false,
+  queuePosition: null,
+  agentName: null,
+
+  startSession: async (userId) => {
+    const data = await api.startChatSession(userId);
+    set({
+      sessionId: data.sessionId,
+      status: 'AI_ACTIVE',
+      messages: [{
+        id: 'welcome',
+        role: 'model',
+        content: data.welcomeMessage,
+        timestamp: new Date().toISOString(),
+      }],
+    });
+  },
+
+  sendMessage: async (text) => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+
+    // Optimistic UI: add user message immediately
+    const userMsg: Message = {
+      id: `u_${Date.now()}`,
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+    set((s) => ({ messages: [...s.messages, userMsg], isLoading: true }));
+
+    // Call the backend
+    const data = await api.sendSessionMessage(sessionId, text);
+
+    const botMsg: Message = {
+      id: `b_${Date.now()}`,
+      role: 'model',
+      content: data.reply,
+      timestamp: data.timestamp,
+    };
+    set((s) => ({ messages: [...s.messages, botMsg], isLoading: false }));
+
+    // Auto-transfer if backend flags it
+    if (data.is_transfer) {
+      get().requestHuman('ai_triggered');
+    }
+  },
+
+  requestHuman: async (reason) => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+    const data = await api.transferToHuman(sessionId, reason);
+    set({ status: 'PENDING_HUMAN', queuePosition: data.queuePosition });
+  },
+
+  pollStatus: async () => {
+    const { sessionId } = get();
+    if (!sessionId) return;
+    const data = await api.getChatStatus(sessionId);
+    set({
+      status: data.status as ChatStatus,
+      queuePosition: data.queuePosition ?? null,
+      agentName: data.agentInfo?.agentName ?? null,
+    });
+  },
+
+  reset: () => set({
+    sessionId: null, status: 'IDLE', messages: [],
+    isLoading: false, queuePosition: null, agentName: null,
+  }),
+}));
+```
+
+### 9.7. App Router Setup (`src/App.tsx`)
+
+```tsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import HomePage from './pages/HomePage';
+import ChatPage from './pages/ChatPage';
+import AgentDashboardPage from './pages/AgentDashboardPage';
+
+const queryClient = new QueryClient();
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/agent" element={<AgentDashboardPage />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
+```
+
+### 9.8. Chat State Machine (UI Transitions)
 
 ```
 ┌─────────────┐
@@ -948,132 +1277,105 @@ src/
        │ is_transfer === true OR user clicks "Talk to Human"
        ▼
 ┌──────────────────┐
-│ HANDOFF_REQUESTED │  (POST /api/v1/chat/transfer-to-human)
+│ HANDOFF_REQUESTED │  (Calls POST /api/v1/chat/transfer-to-human)
 └──────┬───────────┘
        │ Server confirms, ticket created
        ▼
 ┌──────────────────┐
-│ WAITING_FOR_AGENT │  (Polling GET /api/v1/chat/status/:id)
+│ WAITING_FOR_AGENT │  (Polls GET /api/v1/chat/status/:id every 4s)
 │ "You are #3 in    │
 │  queue (~5 min)"   │
 └──────┬───────────┘
-       │ Agent claims ticket
+       │ Agent claims ticket → status becomes HUMAN_CONNECTED
        ▼
 ┌──────────────────┐
 │ AGENT_CONNECTED   │  (Human agent is now chatting)
 │ "Ravi S. joined"  │
 └──────┬───────────┘
-       │ Agent resolves issue
+       │ Agent resolves issue → POST /api/v1/chat/resolve
        ▼
 ┌──────────────────┐
-│ SESSION_CLOSED    │  (Show resolution + feedback modal)
+│ SESSION_CLOSED    │  (Show resolution summary + FeedbackModal)
 └──────────────────┘
 ```
 
-### 9.5. Key Frontend Hook: `useChat.ts`
-
-```typescript
-import { create } from 'zustand';
-
-type ChatStatus = 'IDLE' | 'AI_ACTIVE' | 'PENDING_HUMAN' | 'HUMAN_CONNECTED' | 'CLOSED';
-
-interface Message {
-  id: string;
-  role: 'user' | 'model' | 'agent';
-  content: string;
-  timestamp: string;
-  source: 'customer' | 'ai' | 'human_agent';
-}
-
-interface ChatState {
-  sessionId: string | null;
-  status: ChatStatus;
-  messages: Message[];
-  queuePosition: number | null;
-  agentInfo: { agentId: string; agentName: string } | null;
-
-  startSession: (userId: string) => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
-  requestHumanTransfer: (reason: string) => Promise<void>;
-}
-
-export const useChatStore = create<ChatState>((set, get) => ({
-  sessionId: null,
-  status: 'IDLE',
-  messages: [],
-  queuePosition: null,
-  agentInfo: null,
-
-  startSession: async (userId) => {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/chat/session/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, platform: 'web' })
-    });
-    const data = await res.json();
-    set({
-      sessionId: data.sessionId,
-      status: 'AI_ACTIVE',
-      messages: [{ id: 'welcome', role: 'model', content: data.welcomeMessage, timestamp: data.createdAt, source: 'ai' }]
-    });
-  },
-
-  sendMessage: async (text) => {
-    const { sessionId, messages } = get();
-    const userMsg: Message = { id: `msg_${Date.now()}`, role: 'user', content: text, timestamp: new Date().toISOString(), source: 'customer' };
-    set({ messages: [...messages, userMsg] });
-
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/chat/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, message: text })
-    });
-    const data = await res.json();
-
-    const botMsg: Message = { id: `msg_${Date.now() + 1}`, role: 'model', content: data.reply, timestamp: data.timestamp, source: data.is_transfer ? 'ai' : 'ai' };
-    set({ messages: [...get().messages, botMsg] });
-
-    if (data.is_transfer) {
-      get().requestHumanTransfer(data.transferReason || 'ai_triggered');
-    }
-  },
-
-  requestHumanTransfer: async (reason) => {
-    const { sessionId } = get();
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/chat/transfer-to-human`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, reason })
-    });
-    const data = await res.json();
-    set({ status: 'PENDING_HUMAN', queuePosition: data.queuePosition });
-  }
-}));
-```
-
-### 9.6. Customer-Facing ChatWidget Features
+### 9.9. Customer ChatWidget Features
 
 | Feature | Description |
 |---|---|
 | **Floating Toggle** | Fixed-position button (bottom-right) to open/close the chat window. |
-| **Message List** | Auto-scrolling list showing user, bot, and agent messages with distinct styling. |
-| **Typing Indicator** | Animated dots shown while AI is generating a response. |
-| **"Talk to Human" Button** | Visible in the chat header. Triggers `POST /api/v1/chat/transfer-to-human`. |
-| **Status Badge** | Shows current state: 🟢 AI Active, 🟡 Waiting for Agent, 🔵 Agent Connected, ⚪ Closed. |
-| **Transfer Banner** | Full-width overlay: "Connecting you to a human agent... Position #3 (~5 min)". |
-| **Feedback Modal** | Appears after session closes. Submits to `POST /api/feedback`. |
+| **Message List** | Auto-scrolling list with distinct bubble styles for user (right, blue), bot (left, gray), and agent (left, green). |
+| **Typing Indicator** | Animated 3-dot pulse shown while `isLoading === true`. |
+| **"Talk to Human" Button** | In the chat header. Calls `useChatStore.requestHuman('explicit_human_request')`. |
+| **Status Badge** | 🟢 `AI_ACTIVE` · 🟡 `PENDING_HUMAN` · 🔵 `HUMAN_CONNECTED` · ⚪ `CLOSED`. |
+| **Transfer Banner** | Full-width overlay: "Connecting you to a human agent... Position #3 (~5 min)". Shown when `status === 'PENDING_HUMAN'`. |
+| **Feedback Modal** | Appears when `status === 'CLOSED'`. Submits star ratings + text via `submitFeedback(formData)`. |
 
-### 9.7. Agent Dashboard Features
+### 9.10. Agent Dashboard Features
 
 | Feature | Description |
 |---|---|
-| **Queue Panel** | Real-time list of `PENDING_HUMAN` tickets, sorted by priority. Auto-refreshes via polling. |
-| **Ticket Card** | Shows customer name, issue type, priority badge (🔴 CRITICAL, 🟠 HIGH), and wait time. |
-| **Claim Button** | One-click to claim a ticket via `POST /api/v1/agent/claim-ticket`. |
-| **Active Chat Thread** | Full message history + live input for agent replies via `POST /api/v1/agent/message`. |
-| **Customer Sidebar** | Shows order ID, order status, AI conversation summary, and customer language preference. |
-| **Quick Replies** | Pre-built macro buttons (e.g., "Refund Initiated", "Replacement Ordered", "Escalated to Admin"). |
-| **Resolve Dialog** | Modal to close the ticket via `POST /api/v1/chat/resolve` with resolution type and notes. |
+| **Queue Panel** | Real-time list of `PENDING_HUMAN` tickets via `getAgentQueue()`. Auto-refreshes with React Query `refetchInterval: 5000`. |
+| **Ticket Card** | Shows customer ID, issue type, priority badge (🔴 CRITICAL, 🟠 HIGH, 🟡 MEDIUM), and wait time. |
+| **Claim Button** | One-click to claim via `claimTicket(ticketId, agentId)`. Disabled if already claimed (409). |
+| **Active Chat Thread** | Full message history via `getChatHistory(sessionId)` + live input via `sendAgentMessage()`. |
+| **Customer Sidebar** | Displays order ID, order status, AI conversation summary, and customer language. |
+| **Quick Replies** | Pre-built macro buttons: "Refund Initiated ₹", "Replacement Ordered", "Escalated to Admin". Each calls `sendAgentMessage()` with the appropriate `actionType`. |
+| **Resolve Dialog** | Modal to close the ticket via `resolveSession()` with dropdown for resolution type and notes textarea. |
+
+### 9.11. VPS Deployment Guide (Production)
+
+#### Step 1: Build the production bundle
+```bash
+cd zeu-frontend
+npm run build
+```
+This outputs optimized static files to `dist/`.
+
+#### Step 2: Upload to VPS
+```bash
+# SCP the dist folder to your server
+scp -r dist/ root@YOUR_VPS_IP:/var/www/zeu-frontend
+```
+
+#### Step 3: Configure Nginx
+
+Create `/etc/nginx/sites-available/zeu`:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    root /var/www/zeu-frontend;
+    index index.html;
+
+    # SPA fallback: serve index.html for all routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets aggressively
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+Enable the site and restart Nginx:
+```bash
+sudo ln -s /etc/nginx/sites-available/zeu /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl restart nginx
+```
+
+#### Step 4: Add SSL (HTTPS)
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
+#### Step 5: Verify
+Open `https://yourdomain.com` — your React SPA loads and all API calls hit `https://zeu-backend-dgex.vercel.app` (CORS is already enabled on the backend).
 
 ---
 
@@ -1082,25 +1384,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 Drop this block into your `.cursorrules`, `AGENTS.md`, or Copilot instructions file for instant AI-assisted development:
 
 ```markdown
-## Zeu Backend API Context
+## Zeu Project Context
 
-### Project
-- **Name:** Zeu (Grocery ordering platform for local Kirana stores)
-- **Backend:** Vercel Serverless Functions (Node.js)
+### Architecture
+- **Backend:** Vercel Serverless Functions (Node.js). Managed externally. Base URL: `https://zeu-backend-dgex.vercel.app`
+- **Frontend:** React 19 + Vite 6 + TypeScript SPA. Deployed on VPS via Nginx.
 - **AI Engine:** Google Gemini via `@google/genai` SDK (`ai.interactions.create`)
 - **Primary Model:** `gemini-3.6-flash` (standard), `gemini-3.5-pro` (disputes)
 
-### Base URL
-- Production: `https://zeu-backend-dgex.vercel.app`
+### Frontend Stack
+- React 19, Vite 6, TypeScript, React Router v7, Tailwind CSS v4, Zustand, TanStack React Query v5.
+- Env var prefix: `VITE_` (e.g., `VITE_API_BASE_URL`).
+- All API calls go through `src/api/client.ts`.
 
-### Auth
-- Bearer JWT tokens in `Authorization` header for all `/api/v1/*` endpoints.
-
-### Endpoints Summary
+### API Endpoints Summary
 1. `GET /` — Health check. Returns `{status: "online"}`.
 2. `POST /api/generate` — Legacy AI chat. JSON `{prompt, classification, history}` → `{reply, is_transfer, model_used}`.
-3. `POST /api/feedback` — Multipart form. Fields: `chatbot_rating`, `chatbot_text`, `chatbot_image`, etc.
-4. `POST /api/v1/chat/session/start` — Init session. `{userId, platform, orderContext}` → `{sessionId, welcomeMessage}`.
+3. `POST /api/feedback` — Multipart form (FormData). Fields: `chatbot_rating`, `chatbot_text`, `chatbot_image`, etc.
+4. `POST /api/v1/chat/session/start` — Init session. `{userId, platform, language}` → `{sessionId, welcomeMessage}`.
 5. `POST /api/v1/chat/message` — Send message. `{sessionId, message, stream}` → `{reply, is_transfer}`.
 6. `GET /api/v1/chat/history/:sessionId` — Get chat log. `?limit=50&offset=0`.
 7. `POST /api/v1/chat/transfer-to-human` — Escalate. `{sessionId, reason}` → `{ticketId, queuePosition}`.
@@ -1118,6 +1419,9 @@ Drop this block into your `.cursorrules`, `AGENTS.md`, or Copilot instructions f
 - Empathy without resolution causes churn: always offer hard resolutions (refunds).
 - Multilingual: English, Hindi, Marathi.
 
-### Frontend Stack
-- Next.js 15 (App Router), Tailwind CSS v4, Shadcn UI, Zustand, React Query, SSE for streaming.
+### Key Files
+- `src/api/client.ts` — All API functions. Import from here, never call fetch directly.
+- `src/stores/chatStore.ts` — Zustand store with `startSession`, `sendMessage`, `requestHuman`, `pollStatus`.
+- `src/pages/ChatPage.tsx` — Customer chat view.
+- `src/pages/AgentDashboardPage.tsx` — Support agent portal.
 ```

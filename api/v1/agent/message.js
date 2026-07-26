@@ -1,5 +1,6 @@
 const allowCors = require('../../utils/cors');
 const store = require('../../utils/store');
+const { logResearchEvent } = require('../../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {
@@ -36,6 +37,15 @@ const handler = async (req, res) => {
     };
 
     session.messages.push(newMsg);
+
+    // Log agent message for research
+    logResearchEvent('AGENT_MESSAGE', {
+      sessionId,
+      agentId,
+      message,
+      actionType,
+      refundAmount
+    });
 
     return res.status(200).json({
       success: true,

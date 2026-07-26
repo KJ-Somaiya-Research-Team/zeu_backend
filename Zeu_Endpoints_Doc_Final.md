@@ -12,13 +12,14 @@
 1. [Environment & Configuration](#1-environment--configuration)
 2. [Authentication & Security](#2-authentication--security)
 3. [Global Headers & Rate Limiting](#3-global-headers--rate-limiting)
-4. [Existing Endpoints (Deployed)](#4-existing-endpoints-deployed)
-5. [AI Chatbot Core Module (New v1 Endpoints)](#5-ai-chatbot-core-module)
-6. [Human Agent Transfer & Escalation Protocol](#6-human-agent-transfer--escalation-protocol)
-7. [Customer Feedback Module](#7-customer-feedback-module)
-8. [Comprehensive Error Reference](#8-comprehensive-error-reference)
-9. [Frontend Architecture & UI Blueprint](#9-frontend-architecture--ui-blueprint)
-10. [AI-Optimized System Context (Cursor / Copilot)](#10-ai-optimized-system-context)
+4. [Research Data Collection Layer](#4-research-data-collection-layer)
+5. [Existing Endpoints (Deployed)](#5-existing-endpoints-deployed)
+6. [AI Chatbot Core Module (New v1 Endpoints)](#6-ai-chatbot-core-module)
+7. [Human Agent Transfer & Escalation Protocol](#7-human-agent-transfer--escalation-protocol)
+8. [Customer Feedback Module](#8-customer-feedback-module)
+9. [Comprehensive Error Reference](#9-comprehensive-error-reference)
+10. [Frontend Architecture & UI Blueprint](#10-frontend-architecture--ui-blueprint)
+11. [AI-Optimized System Context (Cursor / Copilot)](#11-ai-optimized-system-context)
 
 ---
 
@@ -104,11 +105,30 @@ Every API response includes the following headers:
 
 ---
 
-## 4. Existing Endpoints (Deployed)
+## 4. Research Data Collection Layer
+
+All interactions on the Zeu AI platform are automatically logged to facilitate academic research on "AI Chatbot Effectiveness in Kirana Marketing". 
+
+The backend includes a centralized `logger.js` that intercepts and records every major event:
+- **`SESSION_START`**: When a customer initiates a chat.
+- **`AI_MESSAGE`**: AI responses, including exact model used, detection of late orders vs direct human escalations, and latency.
+- **`HUMAN_TRANSFER`**: When and why a session was escalated to a human.
+- **`AGENT_CLAIM` & `AGENT_MESSAGE`**: How human agents interact after an escalation.
+- **`SESSION_RESOLVE`**: The final resolution state.
+
+**Data Storage Location:**
+Logs are written as a `JSONL` (JSON Lines) format file. By default, they are stored in `research_data/interactions.jsonl`. When running on Vercel Serverless (where the root filesystem is read-only), logs gracefully fallback to the `/tmp/zeu_interactions.jsonl` directory for temporary collection. For a production deployment over weeks/months, this logger will be attached to an external Vercel KV or MongoDB database for persistent collection.
+
+**Privacy & Ethics:**
+No PII (Personally Identifiable Information) like real customer names or payment details are collected in this layer. Only `userId` (hashes/UUIDs) and contextual chatbot texts are recorded.
+
+---
+
+## 5. Existing Endpoints (Deployed)
 
 These endpoints are live on production today.
 
-### 4.1. Health Check
+### 5.1. Health Check
 
 | Field | Value |
 |---|---|

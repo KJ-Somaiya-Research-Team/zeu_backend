@@ -1,5 +1,6 @@
 const allowCors = require('../../utils/cors');
 const store = require('../../utils/store');
+const { logResearchEvent } = require('../../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {
@@ -45,6 +46,14 @@ const handler = async (req, res) => {
       content: `A human agent (${session.agentInfo.agentName}) has joined the chat.`,
       timestamp: new Date().toISOString(),
       source: 'system'
+    });
+
+    // Log claim event for research
+    logResearchEvent('AGENT_CLAIM', {
+      ticketId,
+      sessionId: ticket.sessionId,
+      agentId,
+      waitDurationMinutes: (new Date() - new Date(ticket.createdAt)) / 1000 / 60
     });
 
     return res.status(200).json({

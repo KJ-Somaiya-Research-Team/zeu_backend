@@ -1,5 +1,6 @@
 const allowCors = require('../../utils/cors');
 const store = require('../../utils/store');
+const { logResearchEvent } = require('../../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {
@@ -50,6 +51,16 @@ const handler = async (req, res) => {
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     
     const queuePosition = tickets.findIndex(t => t.ticketId === ticketId) + 1;
+
+    // Log transfer event for research data collection
+    logResearchEvent('HUMAN_TRANSFER', {
+      sessionId,
+      userId: session.userId,
+      ticketId,
+      reason,
+      priorityLevel: assignedPriority,
+      queuePosition
+    });
 
     return res.status(200).json({
       success: true,

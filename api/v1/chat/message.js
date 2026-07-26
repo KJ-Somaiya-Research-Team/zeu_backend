@@ -1,15 +1,19 @@
 const { GoogleGenAI } = require('@google/genai');
 const allowCors = require('../../utils/cors');
 const store = require('../../utils/store');
+const { logResearchEvent } = require('../../utils/logger');
 
-const ai = new GoogleGenAI();
+// Initialize — explicitly pass key for production reliability
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const buildSystemPrompt = (classification = 'STANDARD') => {
   const base = `You are Zeu's AI Assistant. Zeu is a local Kirana grocery ordering platform.
 RULES:
 1. LATE ORDERS: Do NOT transfer to human. Reassure the customer.
 2. NON-DELIVERY / HUMAN REQUESTS: Only trigger human transfer if order NEVER received, or if customer asks for a human. Reply EXACTLY with: "I am transferring you to a human agent immediately. [TRANSFER]".
-3. Keep responses clean. No markdown bold/italics.`;
+3. Keep responses clean. No markdown bold/italics.
+4. MULTILINGUAL: Respond in the user's preferred language (English / Hindi / Marathi).
+5. EMPATHY WITH HARD RESOLUTION: Offer practical resolutions (instant refunds for damaged/wrong items).`;
 
   if (classification === 'CRITICAL') {
     return `${base}\nMODE: DEEP REASONING (Crisis & Dispute Engine). Empathize and ask for photo evidence.`;
@@ -55,6 +59,7 @@ const handler = async (req, res) => {
 
     let replyText = '';
     let isTransfer = false;
+    // 2026 Latest Models: gemini-3.6-flash (standard) / gemini-3.5-pro (critical deep reasoning)
     let targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : 'gemini-3.6-flash';
 
     if (isDirectEscalation) {
@@ -65,15 +70,20 @@ const handler = async (req, res) => {
       const systemPrompt = buildSystemPrompt(classification);
       
       try {
+        // 2026 Primary API: ai.interactions.create()
         const interaction = await ai.interactions.create({
           model: targetModel,
           input: `${systemPrompt}\n\nUser Question: ${message}`,
+          config: {
+            temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
+          }
         });
-        replyText = interaction.output_text || interaction.text || '';
+        replyText = interaction.output_text || '';
       } catch (err) {
         console.warn('Interactions API fallback:', err.message);
+        // Fallback to generateContent if interactions API is unavailable
         const response = await ai.models.generateContent({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-3.6-flash',
           contents: message,
           config: { systemInstruction: systemPrompt }
         });
@@ -93,17 +103,47 @@ const handler = async (req, res) => {
       source: 'ai'
     });
 
+    // Log interaction for research data collection
+    logResearchEvent('AI_MESSAGE', {
+      sessionId,
+      userId: session.userId,
+      platform: session.platform,
+      language: session.language,
+      userMessage: message,
+      aiReply: replyText,
+      classification,
+      modelUsed: targetModel,
+      isTransfer,
+      isLateOrderQuery,
+      isDirectEscalation,
+      responseTimestamp: timestampBot,
+      messageCount: session.messages.length
+    });
+
+    // Real SSE Streaming using interactions.create stream mode
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       
-      // Send dummy chunks to mock streaming
-      const words = replyText.split(' ');
-      for (let word of words) {
-        res.write(`data: {"type":"chunk", "text":"${word} "}\n\n`);
+      try {
+        const streamResult = await ai.interactions.create({
+          model: targetModel === 'deterministic-guardrail' ? 'gemini-3.6-flash' : targetModel,
+          input: `${buildSystemPrompt(classification)}\n\nUser Question: ${message}`,
+          stream: true,
+        });
+
+        for await (const event of streamResult) {
+          if (event.event_type === 'step.delta' && event.delta && event.delta.type === 'text') {
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: event.delta.text })}\n\n`);
+          }
+        }
+      } catch (streamErr) {
+        // Fallback: send full reply as single SSE event
+        res.write(`data: ${JSON.stringify({ type: "chunk", text: replyText })}\n\n`);
       }
-      res.write(`data: {"type":"done", "is_transfer":${isTransfer}, "model_used":"${targetModel}"}\n\n`);
+
+      res.write(`data: ${JSON.stringify({ type: "done", is_transfer: isTransfer, model_used: targetModel })}\n\n`);
       res.end();
       return;
     }

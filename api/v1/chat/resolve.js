@@ -1,5 +1,6 @@
 const allowCors = require('../../utils/cors');
 const store = require('../../utils/store');
+const { logResearchEvent } = require('../../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {
@@ -31,6 +32,14 @@ const handler = async (req, res) => {
       ticket.agentNotes = agentNotes || '';
       resolvedTicketId = ticket.ticketId;
     }
+
+    // Log session resolve event for research
+    logResearchEvent('SESSION_RESOLVE', {
+      sessionId,
+      agentId,
+      resolution,
+      resolvedTicketId
+    });
 
     return res.status(200).json({
       success: true,

@@ -1,7 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// Initialize the client using the 2026 @google/genai SDK standard
-const ai = new GoogleGenAI();
+// Initialize — explicitly pass key for production reliability
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Enable CORS helper for Vercel Serverless
 const allowCors = (fn) => async (req, res) => {
@@ -10,7 +10,7 @@ const allowCors = (fn) => async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
   );
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -18,6 +18,14 @@ const allowCors = (fn) => async (req, res) => {
   }
   return await fn(req, res);
 };
+
+// Research data logger (import with fallback for backward compat)
+let logResearchEvent;
+try {
+  logResearchEvent = require('./v1/utils/logger').logResearchEvent;
+} catch (e) {
+  logResearchEvent = () => {}; // no-op if logger not found
+}
 
 // Base system prompt extracted from nexkirana_ai_modules research
 const buildSystemPrompt = (classification = 'STANDARD') => {
@@ -66,6 +74,15 @@ const handler = async (req, res) => {
     const isDirectEscalation = !isLateOrderQuery && escalationKeywords.some(keyword => lowerPrompt.includes(keyword));
 
     if (isDirectEscalation) {
+      logResearchEvent('AI_MESSAGE', {
+        endpoint: '/api/generate',
+        userMessage: prompt,
+        aiReply: 'Transfer to human triggered',
+        classification,
+        modelUsed: 'deterministic-guardrail',
+        isTransfer: true
+      });
+
       return res.status(200).json({
         success: true,
         reply: "This issue cannot be handled by the chatbot. I am transferring you to a human agent immediately.",
@@ -76,23 +93,26 @@ const handler = async (req, res) => {
 
     const systemPrompt = buildSystemPrompt(classification);
     
-    // Primary model: gemini-3.6-flash using the new Interactions API (ai.interactions.create)
+    // 2026 Latest Models: gemini-3.6-flash (standard) / gemini-3.5-pro (critical deep reasoning)
     const targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : 'gemini-3.6-flash';
 
     let replyText = '';
     
     try {
-      // 2026 SDK Standard: ai.interactions.create API
+      // 2026 Primary API: ai.interactions.create()
       const interaction = await ai.interactions.create({
         model: targetModel,
         input: `${systemPrompt}\n\nUser Question: ${prompt}`,
+        config: {
+          temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
+        }
       });
-      replyText = interaction.output_text || interaction.text || '';
+      replyText = interaction.output_text || '';
     } catch (interactionError) {
       console.warn('Interactions API fallback to generateContent:', interactionError.message);
-      // Fallback method if model version differs
+      // Fallback to generateContent if interactions API is unavailable
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.6-flash',
         contents: prompt,
         config: { systemInstruction: systemPrompt }
       });
@@ -100,8 +120,19 @@ const handler = async (req, res) => {
     }
 
     // Check if AI output triggered transfer (unless it was a late order query)
-    const isTransfer = !isLateOrderQuery && (replyText.includes('[TRANSFER]') || isDirectEscalation);
+    const isTransfer = !isLateOrderQuery && replyText.includes('[TRANSFER]');
     const cleanReply = replyText.replace('[TRANSFER]', '').trim();
+
+    // Log interaction for research data collection
+    logResearchEvent('AI_MESSAGE', {
+      endpoint: '/api/generate',
+      userMessage: prompt,
+      aiReply: cleanReply,
+      classification,
+      modelUsed: targetModel,
+      isTransfer,
+      isLateOrderQuery
+    });
 
     return res.status(200).json({
       success: true,

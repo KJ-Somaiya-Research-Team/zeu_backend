@@ -1,5 +1,6 @@
-const allowCors = require('../../utils/cors');
-const store = require('../../utils/store');
+const allowCors = require('../../../utils/cors');
+const store = require('../../../utils/store');
+const { logResearchEvent } = require('../../../utils/logger');
 
 const handler = async (req, res) => {
   if (req.method !== 'POST') {
@@ -42,6 +43,16 @@ const handler = async (req, res) => {
       ],
       agentInfo: null
     };
+
+    // Log session start for research data collection
+    logResearchEvent('SESSION_START', {
+      sessionId,
+      userId,
+      platform,
+      language,
+      orderContext,
+      createdAt
+    });
 
     return res.status(201).json({
       success: true,

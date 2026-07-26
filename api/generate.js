@@ -1,8 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-const getAiClient = () => {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-};
+// Initialize the client using the 2026 @google/genai SDK standard
+const ai = new GoogleGenAI();
 
 // Enable CORS helper for Vercel Serverless
 const allowCors = (fn) => async (req, res) => {
@@ -20,24 +19,28 @@ const allowCors = (fn) => async (req, res) => {
   return await fn(req, res);
 };
 
-// Base system prompt extracted from legacy NexKirana research, rebranded to Zeu
+// Base system prompt extracted from nexkirana_ai_modules research
 const buildSystemPrompt = (classification = 'STANDARD') => {
-  const base = `You are Zeu's AI Assistant (formerly NexKirana). Zeu is a platform where customers can order groceries from local Kirana stores for home delivery or pre-book/pickup.
-RULES: 
-- 7-min window is strictly for PICKUP orders, not delivery. 
-- NEVER connect a customer directly to a Kirana shopkeeper.
-- If the user explicitly asks for "insaan", "human", "agent", or says their order was NEVER received → immediately hand off. Reply EXACTLY with: "I am transferring you to a human agent immediately. [TRANSFER]".
-- Always respond in the user's preferred language (English/Hindi/Marathi).
-- Empathy without resolution causes churn. Offer hard resolutions (e.g. refunds for poor quality).
-- Do NOT use markdown bold/italics. Keep it clean with emojis.`;
+  const base = `You are Zeu's AI Assistant (formerly NexKirana). Zeu is a click-and-collect grocery platform with local Kirana stores (supporting pickup and home delivery).
+
+STRICT OPERATIONAL RULES:
+1. LATE ORDERS & DELAYS: Do NOT transfer to human. Reassure the customer, explain delivery status, and provide clear step-by-step guidance. (Late order queries are handled directly by AI!).
+2. NON-DELIVERY & HUMAN REQUESTS: Only trigger human transfer if the order was NEVER received ("never received", "not received") or if the customer explicitly asks for a human ("insaan", "agent", "person"). Reply EXACTLY with: "I am transferring you to a human agent immediately. [TRANSFER]".
+3. PICKUP RULE: The 7-minute window applies STRICTLY to Click-and-Collect PICKUP orders, NOT home deliveries.
+4. SHOPKEEPER ISOLATION: NEVER connect a customer directly to a Kirana shopkeeper.
+5. MULTILINGUAL: Respond in the user's preferred language (English / Hindi / Marathi).
+6. EMPATHY WITH HARD RESOLUTION: Politeness without resolution causes churn. Offer hard financial/operational resolutions (instant refunds for damaged/wrong items).
+7. NO MARKDOWN: Do NOT use markdown bold/italics (like ** or ##). Keep responses clean with line breaks and emojis.`;
 
   if (classification === 'CRITICAL' || classification === 'DISPUTE') {
-    return `${base}\nMODE: DEEP REASONING for high-priority issue.
-For disputes (missing items, damaged goods): verify order details, apologize deeply, and ask the user to upload a product photo + receipt photo.
-Treat as URGENT. Provide concrete resolution with timeline.`;
+    return `${base}\n\nMODE: DEEP REASONING (Crisis & Dispute Engine).
+For disputes (Damaged Product, Expired Item, Wrong Item, Veg/Non-Veg Mixup, Food Safety):
+- Apologize sincerely and acknowledge the issue's severity.
+- Ask the user to upload clear evidence: (1) Photo of damaged/expired product and (2) Photo of shop receipt.
+- Confirm that Priority Case ID is created and hard resolution (refund/replacement) will be processed upon photo verification.`;
   }
   
-  return `${base}\nMODE: FAST RESPONSE. Be concise. Provide structured, step-by-step solutions.`;
+  return `${base}\n\nMODE: FAST RESPONSE. Be concise, warm, and structured.`;
 };
 
 const handler = async (req, res) => {
@@ -46,47 +49,60 @@ const handler = async (req, res) => {
   }
 
   try {
-    const { prompt, history = [], classification = 'STANDARD' } = req.body;
+    const { prompt, classification = 'STANDARD' } = req.body;
     
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({
-        success: false,
-        error: 'GEMINI_API_KEY environment variable is not set. Please set it in your .env file.'
+    const lowerPrompt = prompt.toLowerCase();
+
+    // LATE ORDER CHECK: Late orders / delays MUST NOT trigger human transfer!
+    const isLateOrderQuery = /\b(late|delay|delayed|deri|kab|when|where.*order|kitna time|status)\b/i.test(prompt) && 
+                             !/\b(never received|not received|nahi mila|gaya hi nahi)\b/i.test(prompt);
+
+    // EXPLICIT HUMAN TRANSFER GUARDRAIL: Only for non-delivery or explicit human requests
+    const escalationKeywords = ['insaan', 'human', 'agent', 'person', 'talk to human', 'connect to human', 'never received', 'not received', 'insan'];
+    const isDirectEscalation = !isLateOrderQuery && escalationKeywords.some(keyword => lowerPrompt.includes(keyword));
+
+    if (isDirectEscalation) {
+      return res.status(200).json({
+        success: true,
+        reply: "This issue cannot be handled by the chatbot. I am transferring you to a human agent immediately.",
+        is_transfer: true,
+        model_used: "deterministic-guardrail"
       });
     }
 
-    // Format history for the new SDK
-    const formattedContents = history.slice(-10).map(m => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }]
-    }));
-    
-    formattedContents.push({ role: 'user', parts: [{ text: prompt }] });
-
     const systemPrompt = buildSystemPrompt(classification);
     
-    // Choose model based on environment variable or classification
+    // Primary model: gemini-3.6-flash using process.env override or default
     const defaultModel = process.env.GEMINI_API_MODEL || 'gemini-3.6-flash';
-    const targetModel = classification === 'CRITICAL' ? (process.env.GEMINI_CRITICAL_MODEL || defaultModel) : defaultModel;
+    const criticalModel = process.env.GEMINI_CRITICAL_MODEL || 'gemini-3.5-pro';
+    const targetModel = classification === 'CRITICAL' ? criticalModel : defaultModel;
 
-    const aiClient = getAiClient();
-    const response = await aiClient.models.generateContent({
-      model: targetModel,
-      contents: formattedContents,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: classification === 'CRITICAL' ? 0.4 : 0.7, // Lower temp for reasoning
-      }
-    });
-
-    const replyText = response.text || '';
+    let replyText = '';
     
-    // Fallback escalation check
-    const isTransfer = replyText.includes('[TRANSFER]');
+    try {
+      // 2026 SDK Standard: ai.interactions.create API
+      const interaction = await ai.interactions.create({
+        model: targetModel,
+        input: `${systemPrompt}\n\nUser Question: ${prompt}`,
+      });
+      replyText = interaction.output_text || interaction.text || '';
+    } catch (interactionError) {
+      console.warn('Interactions API fallback to generateContent:', interactionError.message);
+      // Fallback method if model version differs
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.5-flash',
+        contents: prompt,
+        config: { systemInstruction: systemPrompt }
+      });
+      replyText = response.text || '';
+    }
+
+    // Check if AI output triggered transfer (unless it was a late order query)
+    const isTransfer = !isLateOrderQuery && (replyText.includes('[TRANSFER]') || isDirectEscalation);
     const cleanReply = replyText.replace('[TRANSFER]', '').trim();
 
     return res.status(200).json({

@@ -1,4 +1,4 @@
-# Environment variable files (NEVER commit secrets to git)
+# Environment variable files
 .env
 .env.local
 .env.development.local
@@ -8,10 +8,12 @@
 # Dependency directories
 node_modules/
 
-# VS Code directory (optional sensitive config)
-.vscode/
+# Vercel deployment artifacts
+.vercel/
+.vercel_config/
 
 # Logs and OS files
 *.log
 npm-debug.log*
 .DS_Store
+.vscode/

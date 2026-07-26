@@ -1,9 +1,9 @@
-# Zeu Backend API — Complete Technical Documentation v2.0
+# Zeu Backend API — Complete Technical Documentation 
 
 > **Version:** 2.0.0 | **Last Updated:** 2026-07-26
 > **Deployment:** Vercel Serverless Functions (Node.js)
 > **AI Engine:** Google Gemini (`@google/genai` SDK, `gemini-3.6-flash` / `gemini-3.5-pro`)
-> **Maintainer:** Sahil (Backend & AI Architect)
+> **Maintainer:** KJ Somaiya Research Team (Backend & AI Architect)
 
 ---
 

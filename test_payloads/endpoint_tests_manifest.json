@@ -1,0 +1,83 @@
+{
+  "postman_collection": "test_payloads/zeu_postman_collection.json",
+  "environment_variables": {
+    "baseUrl": "http://localhost:3000 (or https://zeu-backend-dgex.vercel.app)",
+    "bearerToken": "Bearer token for authenticated routes",
+    "sessionId": "Active session ID",
+    "ticketId": "Active support ticket ID"
+  },
+  "test_payload_files": [
+    {
+      "name": "Health Check",
+      "method": "GET",
+      "endpoint": "/",
+      "file": "test_payloads/health_check.json"
+    },
+    {
+      "name": "AI Generate Standard Query",
+      "method": "POST",
+      "endpoint": "/api/generate",
+      "file": "test_payloads/generate_standard.json"
+    },
+    {
+      "name": "AI Generate Critical Escalation",
+      "method": "POST",
+      "endpoint": "/api/generate",
+      "file": "test_payloads/generate_critical.json"
+    },
+    {
+      "name": "AI Generate Invalid (Missing Prompt)",
+      "method": "POST",
+      "endpoint": "/api/generate",
+      "file": "test_payloads/generate_invalid_empty.json"
+    },
+    {
+      "name": "Submit Customer Feedback",
+      "method": "POST",
+      "endpoint": "/api/feedback",
+      "file": "test_payloads/feedback_payload.json"
+    },
+    {
+      "name": "Start Chat Session (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/chat/session/start",
+      "file": "test_payloads/v1_chat_session_start.json"
+    },
+    {
+      "name": "Send Chat Message Standard (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/chat/message",
+      "file": "test_payloads/v1_chat_message_standard.json"
+    },
+    {
+      "name": "Send Chat Message Critical (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/chat/message",
+      "file": "test_payloads/v1_chat_message_critical.json"
+    },
+    {
+      "name": "Transfer to Human Agent (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/chat/transfer-to-human",
+      "file": "test_payloads/v1_chat_transfer_to_human.json"
+    },
+    {
+      "name": "Claim Support Ticket (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/agent/claim-ticket",
+      "file": "test_payloads/v1_agent_claim_ticket.json"
+    },
+    {
+      "name": "Agent Send Message (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/agent/message",
+      "file": "test_payloads/v1_agent_message.json"
+    },
+    {
+      "name": "Resolve / Close Chat Session (v1)",
+      "method": "POST",
+      "endpoint": "/api/v1/chat/resolve",
+      "file": "test_payloads/v1_chat_resolve.json"
+    }
+  ]
+}

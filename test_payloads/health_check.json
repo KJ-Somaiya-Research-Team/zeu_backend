@@ -1,0 +1,10 @@
+{
+  "test_name": "Health Check Endpoint",
+  "endpoint": "/",
+  "method": "GET",
+  "expected_status": 200,
+  "expected_response_contains": {
+    "status": "online",
+    "message": "Zeu Chatbot API Backend is running!"
+  }
+}

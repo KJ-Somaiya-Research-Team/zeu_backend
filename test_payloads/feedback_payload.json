@@ -1,0 +1,18 @@
+{
+  "test_name": "Feedback Multipart Data Submission",
+  "endpoint": "/api/feedback",
+  "method": "POST",
+  "content_type": "multipart/form-data",
+  "fields": {
+    "overallRating": "4",
+    "deliveryExperience": "Good timing, but missing one item",
+    "appUsability": "Clean user interface",
+    "customerSupport": "Quick response",
+    "additionalComments": "Pre-deployment testing verification"
+  },
+  "expected_status": 200,
+  "expected_response_contains": {
+    "success": true,
+    "message": "Feedback and images processed successfully"
+  }
+}

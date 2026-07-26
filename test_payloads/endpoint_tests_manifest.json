@@ -1,0 +1,47 @@
+{
+  "project": "Zeu Backend API Test Suite",
+  "version": "1.0.0",
+  "description": "Pre-deployment API Endpoint Test Suite Manifest",
+  "tests": [
+    {
+      "id": "HEALTH_CHECK",
+      "name": "Health Check (GET /)",
+      "endpoint": "/",
+      "method": "GET",
+      "file": "health_check.json",
+      "expected_status": 200
+    },
+    {
+      "id": "GENERATE_STANDARD",
+      "name": "AI Generate Standard Query (POST /api/generate)",
+      "endpoint": "/api/generate",
+      "method": "POST",
+      "file": "generate_standard.json",
+      "expected_status": 200
+    },
+    {
+      "id": "GENERATE_CRITICAL",
+      "name": "AI Generate Escalation Query (POST /api/generate)",
+      "endpoint": "/api/generate",
+      "method": "POST",
+      "file": "generate_critical.json",
+      "expected_status": 200
+    },
+    {
+      "id": "GENERATE_INVALID",
+      "name": "AI Generate Missing Prompt Validation (POST /api/generate)",
+      "endpoint": "/api/generate",
+      "method": "POST",
+      "file": "generate_invalid_empty.json",
+      "expected_status": 400
+    },
+    {
+      "id": "FEEDBACK_SUBMISSION",
+      "name": "Feedback Form Submission (POST /api/feedback)",
+      "endpoint": "/api/feedback",
+      "method": "POST",
+      "file": "feedback_payload.json",
+      "expected_status": 200
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "test_name": "Generate API Validation - Missing Prompt",
+  "endpoint": "/api/generate",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "payload": {
+    "classification": "STANDARD"
+  },
+  "expected_status": 400,
+  "expected_response_contains": {
+    "error": "Prompt is required"
+  }
+}

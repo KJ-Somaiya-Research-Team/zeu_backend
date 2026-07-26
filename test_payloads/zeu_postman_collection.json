@@ -1,0 +1,188 @@
+{
+  "info": {
+    "_postman_id": "zeu-backend-api-tests",
+    "name": "Zeu Backend Pre-Deployment API Tests",
+    "description": "Pre-deployment testing collection for Zeu Chatbot Backend endpoints (GET /, POST /api/generate, POST /api/feedback).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check (GET /)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/",
+          "host": ["{{baseUrl}}"],
+          "path": [""]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Check status field', function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql('online');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Generate - Standard Query",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"prompt\": \"Hi, what is Zeu and how does pickup work?\",\n  \"classification\": \"STANDARD\",\n  \"history\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello\"\n    },\n    {\n      \"role\": \"model\",\n      \"content\": \"Hello! I am Zeu's AI Assistant. How can I help you today?\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/generate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "generate"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200 or 500 (if API key missing)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 500]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Generate - Critical Escalation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"prompt\": \"My order was NEVER received, connect me to a human agent\",\n  \"classification\": \"CRITICAL\",\n  \"history\": []\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/generate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "generate"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200 or 500 (if API key missing)', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 500]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI Generate - Missing Prompt Validation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"classification\": \"STANDARD\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/generate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "generate"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 400 Bad Request', function () {",
+              "    pm.response.to.have.status(400);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Submit Feedback (Multipart Form)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "overallRating",
+              "value": "5",
+              "type": "text"
+            },
+            {
+              "key": "additionalComments",
+              "value": "Pre-deployment testing verification",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/feedback",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "feedback"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

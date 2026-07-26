@@ -1,16 +1,26 @@
-### Health Check
+### 1. Health Check Endpoint
 GET http://localhost:3000/
 
-### Test AI Generation Endpoint
+### 2. Test AI Generation Endpoint (Standard Query)
 POST http://localhost:3000/api/generate
 Content-Type: application/json
 
 {
-  "prompt": "Hi, what is Zeu?",
-  "classification": "STANDARD"
+  "prompt": "Hi, what is Zeu and how does pickup work?",
+  "classification": "STANDARD",
+  "history": [
+    {
+      "role": "user",
+      "content": "Hello"
+    },
+    {
+      "role": "model",
+      "content": "Hello! I am Zeu's AI Assistant. How can I help you today?"
+    }
+  ]
 }
 
-### Test Customer Dispute / Escalation Prompt
+### 3. Test Customer Dispute / Escalation Prompt (Critical Query)
 POST http://localhost:3000/api/generate
 Content-Type: application/json
 
@@ -18,3 +28,25 @@ Content-Type: application/json
   "prompt": "My order was NEVER received, connect me to an agent",
   "classification": "CRITICAL"
 }
+
+### 4. Test Missing Prompt Validation (Bad Request 400)
+POST http://localhost:3000/api/generate
+Content-Type: application/json
+
+{
+  "classification": "STANDARD"
+}
+
+### 5. Test Feedback Submission Endpoint
+POST http://localhost:3000/api/feedback
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="overallRating"
+
+5
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="additionalComments"
+
+Testing feedback endpoint before deployment
+------WebKitFormBoundary7MA4YWxkTrZu0gW--

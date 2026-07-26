@@ -1,0 +1,20 @@
+{
+  "test_name": "Critical Escalation Dispute AI Response",
+  "endpoint": "/api/generate",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "payload": {
+    "prompt": "My order was NEVER received, connect me to a human agent",
+    "classification": "CRITICAL",
+    "history": []
+  },
+  "expected_status": 200,
+  "expected_response_schema": {
+    "success": true,
+    "reply": "STRING",
+    "is_transfer": true,
+    "model_used": "gemini-3.6-flash"
+  }
+}

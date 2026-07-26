@@ -1,0 +1,29 @@
+{
+  "test_name": "Standard AI Response Generation",
+  "endpoint": "/api/generate",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "payload": {
+    "prompt": "Hi, what is Zeu and how does pickup work?",
+    "classification": "STANDARD",
+    "history": [
+      {
+        "role": "user",
+        "content": "Hello"
+      },
+      {
+        "role": "model",
+        "content": "Hello! I am Zeu's AI Assistant. How can I help you today?"
+      }
+    ]
+  },
+  "expected_status": 200,
+  "expected_response_schema": {
+    "success": true,
+    "reply": "STRING",
+    "is_transfer": false,
+    "model_used": "gemini-3.6-flash"
+  }
+}

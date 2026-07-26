@@ -71,7 +71,7 @@ const handler = async (req, res) => {
     
     // Choose model based on environment variable or classification
     const defaultModel = process.env.GEMINI_API_MODEL || 'gemini-3.6-flash';
-    const targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : defaultModel;
+    const targetModel = classification === 'CRITICAL' ? (process.env.GEMINI_CRITICAL_MODEL || defaultModel) : defaultModel;
 
     const aiClient = getAiClient();
     const response = await aiClient.models.generateContent({

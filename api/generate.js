@@ -1,7 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// Initialize the client using the 2026 @google/genai SDK standard
-const ai = new GoogleGenAI();
+try { process.loadEnvFile(); } catch (e) {}
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // Enable CORS helper for Vercel Serverless
 const allowCors = (fn) => async (req, res) => {

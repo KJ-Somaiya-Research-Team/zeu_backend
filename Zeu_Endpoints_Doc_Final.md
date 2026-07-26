@@ -1,7 +1,7 @@
 # Zeu Backend API — Complete Technical Documentation 
 
 > **Version:** 2.0.0 | **Last Updated:** 2026-07-26
-> **Deployment:** Vercel Serverless Functions (Node.js)
+> **Deployment:** Vercel Serverless Functions (Monolithic Express Architecture)
 > **AI Engine:** Google Gemini (`@google/genai` SDK, `gemini-3.6-flash` / `gemini-3.5-pro`)
 > **Maintainer:** KJ Somaiya Research Team (Backend & AI Architect)
 
@@ -23,9 +23,16 @@
 
 ---
 
-## 1. Environment & Configuration
+## 1. Environment & Architecture Configuration
 
-### Base URLs
+### Monolithic Express Architecture
+To bypass Vercel's free tier limit of 12 serverless functions, the entire Zeu backend has been bundled into a single **Express.js application entry point** (`api/index.js`). 
+
+- **Routing:** A `vercel.json` rewrite rule automatically forwards all `/api/*` requests to this single function.
+- **Benefits:** The backend consumes exactly **1 Serverless Function** slot on Vercel, leaving the other 11 slots free, while preserving all existing REST API paths for the frontend team.
+- **Local Testing:** Run `npm run dev` to boot the Express server locally via `server.js`.
+
+### Environment Variables
 
 | Environment | URL |
 |---|---|

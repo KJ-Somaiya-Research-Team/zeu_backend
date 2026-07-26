@@ -20,6 +20,7 @@
 9. [Comprehensive Error Reference](#9-comprehensive-error-reference)
 10. [Frontend Architecture & UI Blueprint](#10-frontend-architecture--ui-blueprint)
 11. [AI-Optimized System Context (Cursor / Copilot)](#11-ai-optimized-system-context)
+12. [Pre-Deployment Testing Guide](#12-pre-deployment-testing-guide)
 
 ---
 
@@ -1452,3 +1453,58 @@ Drop this block into your `.cursorrules`, `AGENTS.md`, or Copilot instructions f
 - `src/pages/ChatPage.tsx` — Customer chat view.
 - `src/pages/AgentDashboardPage.tsx` — Support agent portal.
 ```
+
+---
+
+## 12. Pre-Deployment Testing Guide
+
+This section provides complete testing procedures for verifying the Zeu AI Chatbot Backend Service before deploying to production environments.
+
+### 12.1. Pre-Packaged JSON Test Suite Deliverables
+
+All test files are stored in the `./test_payloads/` directory within the project root:
+
+| File Name | HTTP Method | Endpoint Target | Purpose / Test Scenario |
+| :--- | :--- | :--- | :--- |
+| **`endpoint_tests_manifest.json`** | Multi | Master Manifest | Central configuration listing all test cases. |
+| **`health_check.json`** | `GET` | `/api` | Validates server availability and active route list. |
+| **`generate_standard.json`** | `POST` | `/api/generate` | Tests standard AI query resolution (`gemini-3.6-flash`). |
+| **`generate_critical.json`** | `POST` | `/api/generate` | Tests high-priority order dispute escalation. |
+| **`generate_invalid_empty.json`** | `POST` | `/api/generate` | Tests payload validation & `400 Bad Request`. |
+| **`feedback_payload.json`** | `POST` | `/api/feedback` | Tests customer feedback submission. |
+| **`zeu_postman_collection.json`** | Multi | All Endpoints | Ready-to-import Postman v2.1 collection. |
+
+### 12.2. Automated NPM CLI Test Suite (Recommended)
+
+The backend features an automated test runner script that reads the JSON test files and executes all endpoint assertions automatically.
+
+1. **Start the local server**:
+   ```bash
+   npm run dev
+   ```
+2. **Execute pre-deployment tests**:
+   ```bash
+   npm run test:api
+   ```
+3. **Test Remote Staging / Production Server**:
+   ```bash
+   npm run test:api -- --url=https://your-staging-backend.vercel.app
+   ```
+
+### 12.3. Postman / Insomnia Collection Import
+
+1. Open **Postman** or **Insomnia**.
+2. Click **Import** -> Select file -> `zeu_postman_collection.json` (or `test_payloads/zeu_postman_collection.json`).
+3. Set the variable `baseUrl` to your target environment URL (`http://localhost:3000` or `https://your-domain.com`).
+4. Run the collection to verify all endpoint test cases with built-in status and payload assertions.
+
+### 12.4. Client Pre-Deployment Checklist
+
+Before approving the backend for production deployment, verify the following checklist:
+
+- [x] **Environment Variables**: `GEMINI_API_KEY` is configured in `.env` and Vercel settings.
+- [x] **Health Check Endpoint**: `GET /api` returns status `200` with `"status": "online"`.
+- [x] **AI Generation Response**: `POST /api/generate` returns `200` with `success: true` and non-empty `reply`.
+- [x] **Escalation Handoff Flag**: `POST /api/generate` with critical dispute prompt returns `is_transfer: true`.
+- [x] **Validation Logic**: `POST /api/generate` with missing `prompt` returns `400 Bad Request`.
+- [x] **CORS Headers**: Response headers include `Access-Control-Allow-Origin: *` to enable cross-origin requests from frontend apps.

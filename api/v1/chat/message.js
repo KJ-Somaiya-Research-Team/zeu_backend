@@ -1,8 +1,8 @@
 const { GoogleGenAI } = require('@google/genai');
-const allowCors = require('../../utils/cors');
-const store = require('../../utils/store');
+const allowCors = require('../utils/cors');
+const store = require('../utils/store');
 
-const ai = new GoogleGenAI();
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const buildSystemPrompt = (classification = 'STANDARD') => {
   const base = `You are Zeu's AI Assistant. Zeu is a local Kirana grocery ordering platform.

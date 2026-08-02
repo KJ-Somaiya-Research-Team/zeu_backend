@@ -1,7 +1,7 @@
 const multiparty = require('multiparty');
 
 // Enable CORS for Vercel
-const allowCors = require('./v1/utils/cors');
+const allowCors = require('./v1/_utils/cors');
 
 // In Vercel serverless, we must disable the default body parser to handle multipart form data manually
 const config = {

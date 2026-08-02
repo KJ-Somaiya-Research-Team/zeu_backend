@@ -1,4 +1,4 @@
-const allowCors = require('./v1/utils/cors');
+const allowCors = require('./v1/_utils/cors');
 
 const handler = (req, res) => {
   return res.status(200).json({

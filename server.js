@@ -96,5 +96,5 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Zeu Backend running at http://localhost:${PORT}`);
   console.log(`📍 Health: GET http://localhost:${PORT}/api`);
-  console.log(`📍 ${Object.keys(require('./api/v1/utils/store').sessions).length} active sessions`);
+  console.log(`📍 ${Object.keys(require('./api/v1/_utils/store').sessions).length} active sessions`);
 });

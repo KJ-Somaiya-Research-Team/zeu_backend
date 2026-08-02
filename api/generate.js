@@ -1,10 +1,10 @@
-const allowCors = require('./v1/utils/cors');
-const { generateWithFallback } = require('./v1/utils/ai');
+const allowCors = require('./v1/_utils/cors');
+const { generateWithFallback } = require('./v1/_utils/ai');
 
 // Research data logger (import with fallback for backward compat)
 let logResearchEvent;
 try {
-  logResearchEvent = require('./v1/utils/logger').logResearchEvent;
+  logResearchEvent = require('./v1/_utils/logger').logResearchEvent;
 } catch (e) {
   logResearchEvent = () => {}; // no-op if logger not found
 }

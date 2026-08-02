@@ -1,7 +1,8 @@
 try {
-  process.loadEnvFile();
+  require('dotenv').config();
 } catch (e) {
-  // Ignore if .env is missing
+  // dotenv not installed — try native loadEnvFile (Node 22+)
+  try { process.loadEnvFile(); } catch (_) { /* .env missing or old Node */ }
 }
 
 const http = require('http');
@@ -23,6 +24,7 @@ const agentMessageHandler = require('./api/v1/agent/message');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
+  // Polyfill res.status and res.json for Vercel handler compatibility
   if (!res.status) {
     res.status = function (code) {
       this.statusCode = code;
@@ -40,18 +42,18 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost:' + PORT}`);
   const pathname = url.pathname;
 
+  // Parse query params
+  req.query = req.query || {};
+  url.searchParams.forEach((val, key) => { req.query[key] = val; });
+
+  // Helper to parse JSON body for POST/PUT requests
   const runWithJsonBody = (handler) => {
     if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
       let body = '';
-      req.on('data', (chunk) => {
-        body += chunk.toString();
-      });
+      req.on('data', (chunk) => { body += chunk.toString(); });
       req.on('end', () => {
-        try {
-          req.body = body ? JSON.parse(body) : {};
-        } catch (e) {
-          req.body = {};
-        }
+        try { req.body = body ? JSON.parse(body) : {}; }
+        catch (e) { req.body = {}; }
         handler(req, res);
       });
     } else {
@@ -59,6 +61,7 @@ const server = http.createServer((req, res) => {
     }
   };
 
+  // Route dispatch
   if (pathname === '/api/generate') {
     runWithJsonBody(generateHandler);
   } else if (pathname === '/api/feedback') {
@@ -68,25 +71,17 @@ const server = http.createServer((req, res) => {
   } else if (pathname === '/api/v1/chat/message') {
     runWithJsonBody(chatMessageHandler);
   } else if (pathname.startsWith('/api/v1/chat/history/')) {
-    const sessionId = pathname.replace('/api/v1/chat/history/', '').split('?')[0];
-    req.query = req.query || {};
-    url.searchParams.forEach((val, key) => { req.query[key] = val; });
-    req.query.sessionId = sessionId;
+    req.query.sessionId = pathname.replace('/api/v1/chat/history/', '').split('?')[0];
     runWithJsonBody(chatHistoryHandler);
   } else if (pathname.startsWith('/api/v1/chat/status/')) {
-    const sessionId = pathname.replace('/api/v1/chat/status/', '').split('?')[0];
-    req.query = req.query || {};
-    url.searchParams.forEach((val, key) => { req.query[key] = val; });
-    req.query.sessionId = sessionId;
+    req.query.sessionId = pathname.replace('/api/v1/chat/status/', '').split('?')[0];
     runWithJsonBody(chatStatusHandler);
   } else if (pathname === '/api/v1/chat/transfer-to-human') {
     runWithJsonBody(transferHandler);
   } else if (pathname === '/api/v1/chat/resolve') {
     runWithJsonBody(resolveHandler);
   } else if (pathname === '/api/v1/agent/queue') {
-    req.query = req.query || {};
-    url.searchParams.forEach((val, key) => { req.query[key] = val; });
-    runWithJsonBody(agentQueueHandler);
+    agentQueueHandler(req, res);
   } else if (pathname === '/api/v1/agent/claim-ticket') {
     runWithJsonBody(claimTicketHandler);
   } else if (pathname === '/api/v1/agent/message') {
@@ -99,6 +94,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`🚀 Zeu Backend Server running locally at http://localhost:${PORT}`);
-  console.log(`📍 Health Check: GET http://localhost:${PORT}/api`);
+  console.log(`🚀 Zeu Backend running at http://localhost:${PORT}`);
+  console.log(`📍 Health: GET http://localhost:${PORT}/api`);
+  console.log(`📍 ${Object.keys(require('./api/v1/utils/store').sessions).length} active sessions`);
 });

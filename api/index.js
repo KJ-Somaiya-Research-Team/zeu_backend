@@ -12,6 +12,8 @@ app.use(cors({
 // Parse JSON bodies
 app.use(express.json());
 
+const router = express.Router();
+
 // Import handlers from src/
 const generateHandler = require('../src/generate');
 const feedbackHandler = require('../src/feedback');
@@ -27,38 +29,10 @@ const agentMessageHandler = require('../src/v1/agent/message');
 
 // Helper to adapt Vercel Serverless Function signature (req, res) to Express route
 const wrapHandler = (handler) => (req, res, next) => {
-  // Mock Vercel query parsing for dynamic routes if needed
   Promise.resolve(handler(req, res)).catch(next);
 };
 
-// V0 / Legacy Routes
-app.post('/api/generate', wrapHandler(generateHandler));
-app.post('/api/feedback', wrapHandler(feedbackHandler));
-
-// V1 Chat Routes
-app.post('/api/v1/chat/session/start', wrapHandler(startSessionHandler));
-app.post('/api/v1/chat/message', wrapHandler(chatMessageHandler));
-app.post('/api/v1/chat/transfer-to-human', wrapHandler(transferHandler));
-app.post('/api/v1/chat/resolve', wrapHandler(resolveHandler));
-
-// V1 Agent Routes
-app.get('/api/v1/agent/queue', wrapHandler(agentQueueHandler));
-app.post('/api/v1/agent/claim-ticket', wrapHandler(claimTicketHandler));
-app.post('/api/v1/agent/message', wrapHandler(agentMessageHandler));
-
-// V1 Dynamic Routes
-app.get('/api/v1/chat/history/:sessionId', (req, res, next) => {
-  // Pass Express params to req.query for Vercel handler compatibility
-  req.query.sessionId = req.params.sessionId;
-  wrapHandler(chatHistoryHandler)(req, res, next);
-});
-
-app.get('/api/v1/chat/status/:sessionId', (req, res, next) => {
-  req.query.sessionId = req.params.sessionId;
-  wrapHandler(chatStatusHandler)(req, res, next);
-});
-
-// Root / Health check
+// Health Check handler
 const healthCheck = (req, res) => {
   res.status(200).json({
     status: 'online',
@@ -80,8 +54,51 @@ const healthCheck = (req, res) => {
   });
 };
 
-app.get('/', healthCheck);
-app.get('/api', healthCheck);
+router.get('/', healthCheck);
+router.get('/health', healthCheck);
+
+// Legacy routes
+router.post('/generate', wrapHandler(generateHandler));
+router.post('/feedback', wrapHandler(feedbackHandler));
+
+// V1 Chat routes
+router.post('/v1/chat/session/start', wrapHandler(startSessionHandler));
+router.post('/v1/chat/message', wrapHandler(chatMessageHandler));
+router.post('/v1/chat/transfer-to-human', wrapHandler(transferHandler));
+router.post('/v1/chat/resolve', wrapHandler(resolveHandler));
+
+// V1 Agent routes
+router.get('/v1/agent/queue', wrapHandler(agentQueueHandler));
+router.post('/v1/agent/claim-ticket', wrapHandler(claimTicketHandler));
+router.post('/v1/agent/message', wrapHandler(agentMessageHandler));
+
+// V1 Dynamic routes
+router.get('/v1/chat/history/:sessionId', (req, res, next) => {
+  req.query = req.query || {};
+  req.query.sessionId = req.params.sessionId;
+  wrapHandler(chatHistoryHandler)(req, res, next);
+});
+
+router.get('/v1/chat/status/:sessionId', (req, res, next) => {
+  req.query = req.query || {};
+  req.query.sessionId = req.params.sessionId;
+  wrapHandler(chatStatusHandler)(req, res, next);
+});
+
+// Mount router on both /api and / so it works regardless of Vercel rewrite prefixing
+app.use('/api', router);
+app.use('/', router);
+
+// Catch-all 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: `Endpoint ${req.method} ${req.originalUrl} Not Found` });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Express Server Error:', err);
+  res.status(500).json({ error: 'Internal Server Error', details: err.message });
+});
 
 // Export for Vercel Serverless
 module.exports = app;

@@ -1,7 +1,7 @@
 const { GoogleGenAI } = require('@google/genai');
 
-// Initialize — explicitly pass key for production reliability
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Lazy helper for GoogleGenAI client
+const getAiClient = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // Enable CORS helper for Vercel Serverless
 const allowCors = (fn) => async (req, res) => {
@@ -97,6 +97,7 @@ const handler = async (req, res) => {
     const targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : 'gemini-3.6-flash';
 
     let replyText = '';
+    const ai = getAiClient();
     
     try {
       // 2026 Primary API: ai.interactions.create()

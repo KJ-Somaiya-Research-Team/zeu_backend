@@ -3,8 +3,8 @@ const allowCors = require('../utils/cors');
 const store = require('../utils/store');
 const { logResearchEvent } = require('../utils/logger');
 
-// Initialize — explicitly pass key for production reliability
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Lazy helper for GoogleGenAI client
+const getAiClient = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 const buildSystemPrompt = (classification = 'STANDARD') => {
   const base = `You are Zeu's AI Assistant. Zeu is a local Kirana grocery ordering platform.
@@ -68,6 +68,7 @@ const handler = async (req, res) => {
       targetModel = "deterministic-guardrail";
     } else {
       const systemPrompt = buildSystemPrompt(classification);
+      const ai = getAiClient();
       
       try {
         // 2026 Primary API: ai.interactions.create()

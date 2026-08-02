@@ -40,7 +40,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const rawUrl = req.url || '/api';
+    const url = new URL(rawUrl, 'http://localhost');
     let pathname = url.pathname;
 
     // Normalize trailing slashes

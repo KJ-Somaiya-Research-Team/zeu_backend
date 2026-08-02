@@ -1,20 +1,3 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
-
-// Enable CORS
-app.use(cors({
-  origin: '*',
-  methods: 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
-  allowedHeaders: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-}));
-
-// Parse JSON bodies
-app.use(express.json());
-
-const router = express.Router();
-
-// Import handlers from src/
 const generateHandler = require('../src/generate');
 const feedbackHandler = require('../src/feedback');
 const startSessionHandler = require('../src/v1/chat/session/start');
@@ -27,80 +10,114 @@ const agentQueueHandler = require('../src/v1/agent/queue');
 const claimTicketHandler = require('../src/v1/agent/claim-ticket');
 const agentMessageHandler = require('../src/v1/agent/message');
 
-// Helper to adapt Vercel Serverless Function signature (req, res) to Express route
-const wrapHandler = (handler) => (req, res, next) => {
-  Promise.resolve(handler(req, res)).catch(next);
-};
+module.exports = async (req, res) => {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
+  );
 
-// Health Check handler
-const healthCheck = (req, res) => {
-  res.status(200).json({
-    status: 'online',
-    architecture: 'Monolithic Express',
-    message: 'Zeu Chatbot API Backend is running!',
-    endpoints: [
-      'POST /api/generate',
-      'POST /api/feedback',
-      'POST /api/v1/chat/session/start',
-      'POST /api/v1/chat/message',
-      'GET /api/v1/chat/history/:sessionId',
-      'GET /api/v1/chat/status/:sessionId',
-      'POST /api/v1/chat/transfer-to-human',
-      'GET /api/v1/agent/queue',
-      'POST /api/v1/agent/claim-ticket',
-      'POST /api/v1/agent/message',
-      'POST /api/v1/chat/resolve'
-    ]
-  });
-};
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
-router.get('/', healthCheck);
-router.get('/health', healthCheck);
+  // Helper response polyfills
+  if (!res.status) {
+    res.status = function (code) {
+      this.statusCode = code;
+      return this;
+    };
+  }
+  if (!res.json) {
+    res.json = function (data) {
+      this.setHeader('Content-Type', 'application/json');
+      this.end(JSON.stringify(data));
+      return this;
+    };
+  }
 
-// Legacy routes
-router.post('/generate', wrapHandler(generateHandler));
-router.post('/feedback', wrapHandler(feedbackHandler));
+  try {
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let pathname = url.pathname;
 
-// V1 Chat routes
-router.post('/v1/chat/session/start', wrapHandler(startSessionHandler));
-router.post('/v1/chat/message', wrapHandler(chatMessageHandler));
-router.post('/v1/chat/transfer-to-human', wrapHandler(transferHandler));
-router.post('/v1/chat/resolve', wrapHandler(resolveHandler));
+    // Normalize trailing slashes
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      pathname = pathname.slice(0, -1);
+    }
 
-// V1 Agent routes
-router.get('/v1/agent/queue', wrapHandler(agentQueueHandler));
-router.post('/v1/agent/claim-ticket', wrapHandler(claimTicketHandler));
-router.post('/v1/agent/message', wrapHandler(agentMessageHandler));
+    // Parse query params into req.query
+    req.query = req.query || {};
+    url.searchParams.forEach((val, key) => {
+      req.query[key] = val;
+    });
 
-// V1 Dynamic routes
-router.get('/v1/chat/history/:sessionId', (req, res, next) => {
-  req.query = req.query || {};
-  req.query.sessionId = req.params.sessionId;
-  wrapHandler(chatHistoryHandler)(req, res, next);
-});
+    // Health check endpoint
+    if (pathname === '/' || pathname === '/api' || pathname === '/api/index') {
+      return res.status(200).json({
+        status: 'online',
+        message: 'Zeu Chatbot API Backend is running!',
+        endpoints: [
+          'POST /api/generate',
+          'POST /api/feedback',
+          'POST /api/v1/chat/session/start',
+          'POST /api/v1/chat/message',
+          'GET /api/v1/chat/history/:sessionId',
+          'GET /api/v1/chat/status/:sessionId',
+          'POST /api/v1/chat/transfer-to-human',
+          'GET /api/v1/agent/queue',
+          'POST /api/v1/agent/claim-ticket',
+          'POST /api/v1/agent/message',
+          'POST /api/v1/chat/resolve'
+        ]
+      });
+    }
 
-router.get('/v1/chat/status/:sessionId', (req, res, next) => {
-  req.query = req.query || {};
-  req.query.sessionId = req.params.sessionId;
-  wrapHandler(chatStatusHandler)(req, res, next);
-});
+    // Route dispatch
+    if (pathname === '/api/generate') {
+      return await generateHandler(req, res);
+    }
+    if (pathname === '/api/feedback') {
+      return await feedbackHandler(req, res);
+    }
+    if (pathname === '/api/v1/chat/session/start') {
+      return await startSessionHandler(req, res);
+    }
+    if (pathname === '/api/v1/chat/message') {
+      return await chatMessageHandler(req, res);
+    }
+    if (pathname.startsWith('/api/v1/chat/history/')) {
+      const sessionId = pathname.replace('/api/v1/chat/history/', '');
+      req.query.sessionId = sessionId;
+      return await chatHistoryHandler(req, res);
+    }
+    if (pathname.startsWith('/api/v1/chat/status/')) {
+      const sessionId = pathname.replace('/api/v1/chat/status/', '');
+      req.query.sessionId = sessionId;
+      return await chatStatusHandler(req, res);
+    }
+    if (pathname === '/api/v1/chat/transfer-to-human') {
+      return await transferHandler(req, res);
+    }
+    if (pathname === '/api/v1/chat/resolve') {
+      return await resolveHandler(req, res);
+    }
+    if (pathname === '/api/v1/agent/queue') {
+      return await agentQueueHandler(req, res);
+    }
+    if (pathname === '/api/v1/agent/claim-ticket') {
+      return await claimTicketHandler(req, res);
+    }
+    if (pathname === '/api/v1/agent/message') {
+      return await agentMessageHandler(req, res);
+    }
 
-// Mount router on both /api and / so it works regardless of Vercel rewrite prefixing
-app.use('/api', router);
-app.use('/', router);
+    return res.status(404).json({ error: `Endpoint ${req.method} ${pathname} Not Found` });
 
-// Catch-all 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: `Endpoint ${req.method} ${req.originalUrl} Not Found` });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Express Server Error:', err);
-  res.status(500).json({ error: 'Internal Server Error', details: err.message });
-});
-
-// Export for Vercel Serverless
-module.exports = (req, res) => {
-  return app(req, res);
+  } catch (err) {
+    console.error('Vercel Serverless Handler Error:', err);
+    return res.status(500).json({ error: 'Internal Server Error', details: err.message });
+  }
 };

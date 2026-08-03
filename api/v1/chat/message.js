@@ -34,9 +34,20 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Message exceeds maximum length of 2000 characters' });
     }
 
-    const session = store.sessions[sessionId];
+    let session = store.sessions[sessionId];
     if (!session) {
-      return res.status(404).json({ success: false, error: `Session ${sessionId} not found` });
+      // Auto-create session on Vercel (serverless functions don't share memory)
+      store.sessions[sessionId] = {
+        userId: 'auto',
+        platform: 'app',
+        language: 'en',
+        orderContext: {},
+        status: 'AI_ACTIVE',
+        createdAt: new Date().toISOString(),
+        messages: [],
+        agentInfo: null
+      };
+      session = store.sessions[sessionId];
     }
 
     if (session.status !== 'AI_ACTIVE') {

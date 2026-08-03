@@ -25,6 +25,7 @@ const handler = async (req, res) => {
 
     const createdAt = new Date().toISOString();
 
+    if (!store.sessions) store.sessions = {};
     store.sessions[sessionId] = {
       userId,
       platform,

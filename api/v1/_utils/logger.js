@@ -5,21 +5,27 @@
 const fs = require('fs');
 const path = require('path');
 
-// Determine log path safely without top-level filesystem mutation
+// Determine log path safely — always use /tmp unless confirmed local dev
 const getLogFilePath = () => {
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-    return path.join('/tmp', 'zeu_interactions.jsonl');
-  }
-  try {
-    const logDir = path.join(process.cwd(), 'research_data');
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
+  // Always use /tmp on serverless / production / unknown environments
+  const tmpPath = path.join('/tmp', 'zeu_interactions.jsonl');
+  
+  // Only use local directory if explicitly running locally
+  if (process.env.NODE_ENV === 'development' || process.env.LOCAL_DEV === 'true') {
+    try {
+      const logDir = path.join(process.cwd(), 'research_data');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+      }
+      return path.join(logDir, 'interactions.jsonl');
+    } catch (err) {
+      // Fall through to /tmp
     }
-    return path.join(logDir, 'interactions.jsonl');
-  } catch (err) {
-    return path.join('/tmp', 'zeu_interactions.jsonl');
   }
+  
+  return tmpPath;
 };
+
 
 const logResearchEvent = (eventType, data) => {
   const entry = {

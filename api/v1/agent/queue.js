@@ -1,5 +1,5 @@
-const allowCors = require('../utils/cors');
-const store = require('../utils/store');
+const allowCors = require('../_utils/cors');
+const store = require('../_utils/store');
 
 const handler = async (req, res) => {
   if (req.method !== 'GET') {

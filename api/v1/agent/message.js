@@ -14,9 +14,13 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'sessionId, agentId, and message are required' });
     }
 
-    const session = store.sessions[sessionId];
+    let session = store.sessions[sessionId];
     if (!session) {
-      return res.status(404).json({ success: false, error: `Session ${sessionId} not found` });
+      store.sessions[sessionId] = {
+        userId: 'auto', platform: 'app', language: 'en', orderContext: {},
+        status: 'AI_ACTIVE', createdAt: new Date().toISOString(), messages: [], agentInfo: null
+      };
+      session = store.sessions[sessionId];
     }
 
     if (session.status !== 'HUMAN_CONNECTED') {

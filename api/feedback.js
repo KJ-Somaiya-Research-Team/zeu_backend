@@ -30,6 +30,14 @@ const handler = async (req, res) => {
       console.log('--- Received Feedback Submission ---');
       console.log('Fields:', fields);
       
+      // Log research event in JSON format
+      try {
+        const { logResearchEvent } = require('./v1/_utils/logger');
+        logResearchEvent('USER_FEEDBACK', { fields, filesCount: Object.keys(files).length });
+      } catch (logErr) {
+        console.error('Logger fallback error:', logErr.message);
+      }
+      
       // Log received files (images)
       Object.keys(files).forEach((key) => {
         const uploadedFiles = files[key];

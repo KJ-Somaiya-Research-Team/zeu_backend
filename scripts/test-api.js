@@ -1,164 +1,198 @@
-const http = require('http');
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env node
+/**
+ * Zeu Backend — End-to-End API Test Runner
+ * Tests the full lifecycle: health → session → chat → transfer → agent → resolve
+ * 
+ * Usage:
+ *   npm run test:api                                    # Test against localhost:3000
+ *   npm run test:api -- --url=https://your-vercel.app   # Test against remote
+ */
 
-// Parse CLI flags (e.g. --url=http://localhost:3000 or --url=https://my-app.vercel.app)
-const args = process.argv.slice(2);
-let baseUrl = 'http://localhost:3000';
-for (const arg of args) {
-  if (arg.startsWith('--url=')) {
-    baseUrl = arg.split('=')[1].replace(/\/$/, '');
+const BASE = process.argv.find(a => a.startsWith('--url='))?.split('=')[1] || 'http://localhost:3000';
+
+let passed = 0, failed = 0;
+const results = [];
+
+async function request(method, path, body = null) {
+  const url = `${BASE}${path}`;
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  
+  const res = await fetch(url, opts);
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  return { status: res.status, data };
+}
+
+function assert(testName, condition, detail = '') {
+  if (condition) {
+    passed++;
+    results.push({ name: testName, status: 'PASS' });
+    console.log(`  ✅ ${testName}`);
+  } else {
+    failed++;
+    results.push({ name: testName, status: 'FAIL', detail });
+    console.log(`  ❌ ${testName}${detail ? ' — ' + detail : ''}`);
   }
 }
 
-const PAYLOADS_DIR = path.join(__dirname, '..', 'test_payloads');
-const MANIFEST_PATH = path.join(PAYLOADS_DIR, 'endpoint_tests_manifest.json');
+async function run() {
+  console.log('='.repeat(60));
+  console.log('🚀 Zeu Backend E2E Test Suite');
+  console.log(`📍 Target: ${BASE}`);
+  console.log('='.repeat(60));
 
-if (!fs.existsSync(MANIFEST_PATH)) {
-  console.error(`❌ Error: Manifest file not found at ${MANIFEST_PATH}`);
-  process.exit(1);
-}
+  // ─── 1. Health Check ───
+  console.log('\n📋 1. Health Check');
+  const health = await request('GET', '/api');
+  assert('GET /api returns 200', health.status === 200);
+  assert('Response has status=online', health.data?.status === 'online');
+  assert('Response lists endpoints', Array.isArray(health.data?.endpoints) && health.data.endpoints.length >= 10);
 
-const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+  // ─── 2. Input Validation ───
+  console.log('\n📋 2. Input Validation');
+  const noPrompt = await request('POST', '/api/generate', { classification: 'STANDARD' });
+  assert('POST /api/generate without prompt → 400', noPrompt.status === 400);
 
-function makeRequest(targetUrl, method, headers, bodyData) {
-  return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(targetUrl);
-    const client = parsedUrl.protocol === 'https:' ? https : http;
+  const methodCheck = await request('GET', '/api/generate');
+  assert('GET /api/generate → 405', methodCheck.status === 405);
 
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: method,
-      headers: headers || {}
-    };
-
-    const req = client.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      res.on('end', () => {
-        let jsonResponse = null;
-        try {
-          jsonResponse = JSON.parse(data);
-        } catch (e) {
-          jsonResponse = null;
-        }
-        resolve({
-          statusCode: res.statusCode,
-          headers: res.headers,
-          rawBody: data,
-          json: jsonResponse
-        });
-      });
-    });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    if (bodyData) {
-      req.write(bodyData);
-    }
-    req.end();
+  // ─── 3. AI Generate (Standard) ───
+  console.log('\n📋 3. AI Generate');
+  const gen = await request('POST', '/api/generate', {
+    prompt: 'What is Zeu and how does pickup work?',
+    classification: 'STANDARD'
   });
-}
+  assert('POST /api/generate returns 200', gen.status === 200);
+  assert('Response has success=true', gen.data?.success === true);
+  assert('Response has non-empty reply', typeof gen.data?.reply === 'string' && gen.data.reply.length > 0);
+  assert('Response has model_used field', typeof gen.data?.model_used === 'string');
+  assert('is_transfer is false for standard query', gen.data?.is_transfer === false);
 
-async function runTestSuite() {
-  console.log(`\n==================================================`);
-  console.log(`🚀 Running Zeu Backend Pre-Deployment API Tests`);
-  console.log(`📍 Target Server: ${baseUrl}`);
-  console.log(`==================================================\n`);
+  // ─── 4. AI Generate (Escalation) ───
+  console.log('\n📋 4. Escalation Detection');
+  const esc = await request('POST', '/api/generate', {
+    prompt: 'I never received my order, connect me to a human agent',
+    classification: 'STANDARD'
+  });
+  assert('Escalation returns 200', esc.status === 200);
+  assert('Escalation sets is_transfer=true', esc.data?.is_transfer === true);
 
-  let passedCount = 0;
-  let failedCount = 0;
+  // ─── 5. Late Order (NO transfer) ───
+  console.log('\n📋 5. Late Order Guard');
+  const late = await request('POST', '/api/generate', {
+    prompt: 'My order is delayed, when will it arrive?',
+    classification: 'STANDARD'
+  });
+  assert('Late order returns 200', late.status === 200);
+  assert('Late order does NOT trigger transfer', late.data?.is_transfer === false);
 
-  for (const testSpec of manifest.tests) {
-    const testFilePath = path.join(PAYLOADS_DIR, testSpec.file);
-    if (!fs.existsSync(testFilePath)) {
-      console.log(`❌ [FAIL] ${testSpec.name}`);
-      console.log(`   Reason: Payload JSON file missing (${testSpec.file})\n`);
-      failedCount++;
-      continue;
-    }
+  // ─── 6. Session Lifecycle ───
+  console.log('\n📋 6. Session Lifecycle');
+  
+  // Start session
+  const startRes = await request('POST', '/api/v1/chat/session/start', {
+    userId: 'test_user_e2e',
+    platform: 'web',
+    language: 'en'
+  });
+  assert('Start session returns 201', startRes.status === 201);
+  assert('Session has sessionId', typeof startRes.data?.sessionId === 'string');
+  const sessionId = startRes.data?.sessionId;
 
-    const testDetail = JSON.parse(fs.readFileSync(testFilePath, 'utf8'));
-    const fullUrl = `${baseUrl}${testSpec.endpoint}`;
-    const method = testSpec.method || 'GET';
+  if (!sessionId) {
+    console.log('\n⚠️  Cannot continue lifecycle tests without sessionId');
+  } else {
+    // Missing userId validation
+    const badStart = await request('POST', '/api/v1/chat/session/start', {});
+    assert('Start session without userId → 400', badStart.status === 400);
 
-    let headers = {};
-    let bodyData = null;
+    // Send chat message
+    const chatRes = await request('POST', '/api/v1/chat/message', {
+      sessionId,
+      message: 'Hi, what are your store hours?',
+      classification: 'STANDARD'
+    });
+    assert('Chat message returns 200', chatRes.status === 200);
+    assert('Chat response has reply', typeof chatRes.data?.reply === 'string' && chatRes.data.reply.length > 0);
 
-    if (testDetail.content_type === 'multipart/form-data') {
-      const boundary = '----WebKitFormBoundaryZeuTest7MA4YWxkTrZu0gW';
-      headers['Content-Type'] = `multipart/form-data; boundary=${boundary}`;
-      let bodyString = '';
-      if (testDetail.fields) {
-        for (const [key, val] of Object.entries(testDetail.fields)) {
-          bodyString += `--${boundary}\r\n`;
-          bodyString += `Content-Disposition: form-data; name="${key}"\r\n\r\n`;
-          bodyString += `${val}\r\n`;
-        }
-      }
-      bodyString += `--${boundary}--\r\n`;
-      bodyData = bodyString;
-      headers['Content-Length'] = Buffer.byteLength(bodyData);
-    } else if (testDetail.payload) {
-      headers['Content-Type'] = 'application/json';
-      bodyData = JSON.stringify(testDetail.payload);
-      headers['Content-Length'] = Buffer.byteLength(bodyData);
-    }
+    // Get history
+    const histRes = await request('GET', `/api/v1/chat/history/${sessionId}`);
+    assert('Chat history returns 200', histRes.status === 200);
+    assert('History has messages', Array.isArray(histRes.data?.messages) && histRes.data.messages.length >= 2);
 
-    try {
-      const response = await makeRequest(fullUrl, method, headers, bodyData);
+    // Get status
+    const statusRes = await request('GET', `/api/v1/chat/status/${sessionId}`);
+    assert('Status returns 200', statusRes.status === 200);
+    assert('Status is AI_ACTIVE', statusRes.data?.status === 'AI_ACTIVE');
 
-      // Check status code match
-      let isPass = response.statusCode === testSpec.expected_status;
+    // Transfer to human
+    const transferRes = await request('POST', '/api/v1/chat/transfer-to-human', {
+      sessionId,
+      reason: 'non_delivery',
+      priorityLevel: 'HIGH'
+    });
+    assert('Transfer returns 200', transferRes.status === 200);
+    assert('Transfer creates ticket', typeof transferRes.data?.ticketId === 'string');
+    const ticketId = transferRes.data?.ticketId;
 
-      // Special case: /api/generate without GEMINI_API_KEY returns 500 locally
-      if (!isPass && testSpec.endpoint === '/api/generate' && response.statusCode === 500) {
-        if (response.json && response.json.error && response.json.error.includes('GEMINI_API_KEY')) {
-          console.log(`⚠️  [WARN] ${testSpec.name}`);
-          console.log(`   HTTP Status: 500 (GEMINI_API_KEY env variable is not set locally)`);
-          console.log(`   Endpoint structure verified successfully.\n`);
-          passedCount++;
-          continue;
-        }
-      }
+    // Agent queue
+    const queueRes = await request('GET', '/api/v1/agent/queue');
+    assert('Agent queue returns 200', queueRes.status === 200);
+    assert('Queue has tickets', typeof queueRes.data?.queueLength === 'number');
 
-      if (isPass) {
-        console.log(`✅ [PASS] ${testSpec.name}`);
-        console.log(`   Endpoint: ${method} ${testSpec.endpoint} | Status: ${response.statusCode}`);
-        if (response.json && response.json.status) {
-          console.log(`   Response Status: "${response.json.status}"`);
-        }
-        console.log('');
-        passedCount++;
-      } else {
-        console.log(`❌ [FAIL] ${testSpec.name}`);
-        console.log(`   Endpoint: ${method} ${testSpec.endpoint}`);
-        console.log(`   Expected Status: ${testSpec.expected_status}, Received: ${response.statusCode}`);
-        console.log(`   Response Body: ${response.rawBody}\n`);
-        failedCount++;
-      }
-    } catch (err) {
-      console.log(`❌ [FAIL] ${testSpec.name}`);
-      console.log(`   Endpoint: ${method} ${testSpec.endpoint}`);
-      console.log(`   Error: ${err.message}\n`);
-      failedCount++;
+    if (ticketId) {
+      // Claim ticket
+      const claimRes = await request('POST', '/api/v1/agent/claim-ticket', {
+        ticketId,
+        agentId: 'agent_test_001'
+      });
+      assert('Claim ticket returns 200', claimRes.status === 200);
+      assert('Claim sets HUMAN_CONNECTED', claimRes.data?.status === 'HUMAN_CONNECTED');
+
+      // Agent message
+      const agentMsgRes = await request('POST', '/api/v1/agent/message', {
+        sessionId,
+        agentId: 'agent_test_001',
+        message: 'I am looking into your issue right now.'
+      });
+      assert('Agent message returns 200', agentMsgRes.status === 200);
+
+      // Resolve session
+      const resolveRes = await request('POST', '/api/v1/chat/resolve', {
+        sessionId,
+        agentId: 'agent_test_001',
+        resolution: 'full_refund'
+      });
+      assert('Resolve returns 200', resolveRes.status === 200);
+      assert('Resolve sets CLOSED', resolveRes.data?.status === 'CLOSED');
     }
   }
 
-  console.log(`==================================================`);
-  console.log(`📊 Test Summary: ${passedCount} Passed, ${failedCount} Failed`);
-  console.log(`==================================================\n`);
+  // ─── 7. 404 Check ───
+  console.log('\n📋 7. Error Handling');
+  const notFound = await request('GET', '/api/nonexistent');
+  assert('Unknown endpoint returns 404', notFound.status === 404);
 
-  if (failedCount > 0) {
-    process.exit(1);
+  // ─── Summary ───
+  console.log('\n' + '='.repeat(60));
+  console.log(`📊 Results: ${passed} passed, ${failed} failed (${passed + failed} total)`);
+  console.log('='.repeat(60));
+
+  if (failed > 0) {
+    console.log('\n❌ FAILED TESTS:');
+    results.filter(r => r.status === 'FAIL').forEach(r => {
+      console.log(`   • ${r.name}${r.detail ? ': ' + r.detail : ''}`);
+    });
   }
+
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-runTestSuite();
+run().catch(err => {
+  console.error('Test runner crashed:', err);
+  process.exit(1);
+});

@@ -1,5 +1,5 @@
-const allowCors = require('../utils/cors');
-const store = require('../utils/store');
+const allowCors = require('../_utils/cors');
+const store = require('../_utils/store');
 
 const handler = async (req, res) => {
   if (req.method !== 'GET') {
@@ -7,24 +7,21 @@ const handler = async (req, res) => {
   }
 
   try {
-    const statusFilter = req.query.status || 'PENDING_HUMAN';
-    const limit = parseInt(req.query.limit) || 20;
+    const statusFilter = (req.query && req.query.status) || 'PENDING_HUMAN';
+    const limit = parseInt((req.query && req.query.limit) || '20');
 
     let tickets = Object.values(store.tickets)
       .filter(t => t.status === statusFilter);
 
-    // Sort: CRITICAL > HIGH > MEDIUM > LOW, then by oldest wait time
     const priorityWeight = { 'CRITICAL': 4, 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
     
     tickets.sort((a, b) => {
       const pA = priorityWeight[a.priorityLevel] || 0;
       const pB = priorityWeight[b.priorityLevel] || 0;
-      
-      if (pA !== pB) return pB - pA; // Higher priority first
-      return new Date(a.createdAt) - new Date(b.createdAt); // Oldest first
+      if (pA !== pB) return pB - pA;
+      return new Date(a.createdAt) - new Date(b.createdAt);
     });
 
-    // Add estimated wait time for UI rendering
     tickets = tickets.map(t => {
       const waitTimeMs = Date.now() - new Date(t.createdAt).getTime();
       return {

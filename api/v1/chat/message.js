@@ -1,10 +1,7 @@
-const { GoogleGenAI } = require('@google/genai');
-const allowCors = require('../utils/cors');
-const store = require('../utils/store');
-const { logResearchEvent } = require('../utils/logger');
-
-// Initialize — explicitly pass key for production reliability
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const allowCors = require('../_utils/cors');
+const store = require('../_utils/store');
+const { logResearchEvent } = require('../_utils/logger');
+const { generateWithFallback } = require('../_utils/ai');
 
 const buildSystemPrompt = (classification = 'STANDARD') => {
   const base = `You are Zeu's AI Assistant. Zeu is a local Kirana grocery ordering platform.
@@ -33,9 +30,24 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'sessionId and message are required' });
     }
 
-    const session = store.sessions[sessionId];
+    if (message.length > 2000) {
+      return res.status(400).json({ success: false, error: 'Message exceeds maximum length of 2000 characters' });
+    }
+
+    let session = store.sessions[sessionId];
     if (!session) {
-      return res.status(404).json({ success: false, error: `Session ${sessionId} not found` });
+      // Auto-create session on Vercel (serverless functions don't share memory)
+      store.sessions[sessionId] = {
+        userId: 'auto',
+        platform: 'app',
+        language: 'en',
+        orderContext: {},
+        status: 'AI_ACTIVE',
+        createdAt: new Date().toISOString(),
+        messages: [],
+        agentInfo: null
+      };
+      session = store.sessions[sessionId];
     }
 
     if (session.status !== 'AI_ACTIVE') {
@@ -59,8 +71,7 @@ const handler = async (req, res) => {
 
     let replyText = '';
     let isTransfer = false;
-    // 2026 Latest Models: gemini-3.6-flash (standard) / gemini-3.5-pro (critical deep reasoning)
-    let targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : 'gemini-3.6-flash';
+    let targetModel = 'gemini-3.6-flash';
 
     if (isDirectEscalation) {
       replyText = "This issue cannot be handled by the chatbot. I am transferring you to a human agent immediately.";
@@ -70,24 +81,14 @@ const handler = async (req, res) => {
       const systemPrompt = buildSystemPrompt(classification);
       
       try {
-        // 2026 Primary API: ai.interactions.create()
-        const interaction = await ai.interactions.create({
-          model: targetModel,
-          input: `${systemPrompt}\n\nUser Question: ${message}`,
-          config: {
-            temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
-          }
+        const result = await generateWithFallback(message, { 
+          systemInstruction: systemPrompt, 
+          temperature: classification === 'CRITICAL' ? 0.4 : 0.7 
         });
-        replyText = interaction.output_text || '';
+        replyText = result.text || '';
+        targetModel = result.model || targetModel;
       } catch (err) {
-        console.warn('Interactions API fallback:', err.message);
-        // Fallback to generateContent if interactions API is unavailable
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: message,
-          config: { systemInstruction: systemPrompt }
-        });
-        replyText = response.text || '';
+        console.warn('AI generation error:', err.message);
       }
 
       isTransfer = !isLateOrderQuery && replyText.includes('[TRANSFER]');
@@ -120,28 +121,13 @@ const handler = async (req, res) => {
       messageCount: session.messages.length
     });
 
-    // Real SSE Streaming using interactions.create stream mode
+    // SSE Streaming: send pre-generated reply as stream events
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       
-      try {
-        const streamResult = await ai.interactions.create({
-          model: targetModel === 'deterministic-guardrail' ? 'gemini-3.6-flash' : targetModel,
-          input: `${buildSystemPrompt(classification)}\n\nUser Question: ${message}`,
-          stream: true,
-        });
-
-        for await (const event of streamResult) {
-          if (event.event_type === 'step.delta' && event.delta && event.delta.type === 'text') {
-            res.write(`data: ${JSON.stringify({ type: "chunk", text: event.delta.text })}\n\n`);
-          }
-        }
-      } catch (streamErr) {
-        // Fallback: send full reply as single SSE event
-        res.write(`data: ${JSON.stringify({ type: "chunk", text: replyText })}\n\n`);
-      }
+      res.write(`data: ${JSON.stringify({ type: "chunk", text: replyText })}\n\n`);
 
       res.write(`data: ${JSON.stringify({ type: "done", is_transfer: isTransfer, model_used: targetModel })}\n\n`);
       res.end();
@@ -161,7 +147,7 @@ const handler = async (req, res) => {
 
   } catch (error) {
     console.error('Chat message error:', error);
-    return res.status(500).json({ success: false, error: 'Internal server error', details: error.message });
+    return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
 

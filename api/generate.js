@@ -1,28 +1,10 @@
-const { GoogleGenAI } = require('@google/genai');
-
-// Initialize — explicitly pass key for production reliability
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// Enable CORS helper for Vercel Serverless
-const allowCors = (fn) => async (req, res) => {
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*'); 
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-  return await fn(req, res);
-};
+const allowCors = require('./v1/_utils/cors');
+const { generateWithFallback } = require('./v1/_utils/ai');
 
 // Research data logger (import with fallback for backward compat)
 let logResearchEvent;
 try {
-  logResearchEvent = require('./v1/utils/logger').logResearchEvent;
+  logResearchEvent = require('./v1/_utils/logger').logResearchEvent;
 } catch (e) {
   logResearchEvent = () => {}; // no-op if logger not found
 }
@@ -63,6 +45,10 @@ const handler = async (req, res) => {
       return res.status(400).json({ error: 'Prompt is required' });
     }
 
+    if (prompt.length > 2000) {
+      return res.status(400).json({ error: 'Prompt too long' });
+    }
+
     const lowerPrompt = prompt.toLowerCase();
 
     // LATE ORDER CHECK: Late orders / delays MUST NOT trigger human transfer!
@@ -93,31 +79,15 @@ const handler = async (req, res) => {
 
     const systemPrompt = buildSystemPrompt(classification);
     
-    // 2026 Latest Models: gemini-3.6-flash (standard) / gemini-3.5-pro (critical deep reasoning)
-    const targetModel = classification === 'CRITICAL' ? 'gemini-3.5-pro' : 'gemini-3.6-flash';
-
     let replyText = '';
+    let targetModel = '';
     
-    try {
-      // 2026 Primary API: ai.interactions.create()
-      const interaction = await ai.interactions.create({
-        model: targetModel,
-        input: `${systemPrompt}\n\nUser Question: ${prompt}`,
-        config: {
-          temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
-        }
-      });
-      replyText = interaction.output_text || '';
-    } catch (interactionError) {
-      console.warn('Interactions API fallback to generateContent:', interactionError.message);
-      // Fallback to generateContent if interactions API is unavailable
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: prompt,
-        config: { systemInstruction: systemPrompt }
-      });
-      replyText = response.text || '';
-    }
+    const aiResult = await generateWithFallback(prompt, {
+      systemInstruction: systemPrompt,
+      temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
+    });
+    replyText = aiResult.text;
+    targetModel = aiResult.model;
 
     // Check if AI output triggered transfer (unless it was a late order query)
     const isTransfer = !isLateOrderQuery && replyText.includes('[TRANSFER]');
@@ -145,8 +115,7 @@ const handler = async (req, res) => {
     console.error('Zeu AI Engine Error:', error);
     return res.status(500).json({ 
       success: false, 
-      error: 'Failed to process AI request',
-      details: error.message 
+      error: 'Failed to process AI request'
     });
   }
 };

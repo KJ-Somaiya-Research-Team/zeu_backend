@@ -15,7 +15,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
-    "mongoose": "^8.2.0",
+    "mongoose": "^9.9.1",
     "multiparty": "^4.3.0",
     "vercel": "^57.0.0"
   }

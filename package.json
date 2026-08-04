@@ -17,6 +17,7 @@
     "@google/genai": "^2.13.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "mongoose": "^8.2.0",
     "multiparty": "^4.3.0",
     "vercel": "^57.0.0"
   }

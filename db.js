@@ -8,9 +8,9 @@ let client = null;
 const connectDB = async () => {
   if (db) return db;
 
-  const uri = process.env.MONGO_URI || process.env.DATABASE_URL;
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
   if (!uri || uri.startsWith('postgresql')) {
-    console.warn('MONGO_URI not set — falling back to in-memory store');
+    console.warn('MONGO_URI / MONGODB_URI not set — falling back to in-memory store');
     return null;
   }
 

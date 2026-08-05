@@ -6,7 +6,7 @@ const handler = (req, res) => {
     version: '3.0.0',
     message: 'Zeu Chatbot API Backend is running!',
     runtime: 'Render (persistent)',
-    database: require('../db').getDB() ? 'MongoDB Connected (Atlas)' : 'In-Memory Fallback (MONGO_URI not set)',
+    database: require('../db').getDB() ? 'MongoDB Connected (Atlas)' : ((process.env.MONGODB_URI || process.env.MONGO_URI) ? 'Connecting...' : 'In-Memory Fallback (MONGO_URI not set)'),
     timestamp: new Date().toISOString(),
     endpoints: [
       'POST /api/generate',

@@ -1,12 +1,8 @@
-const allowCors = require('../_utils/cors');
+// api/v1/chat/resolve.js — Close/resolve a session
 const store = require('../_utils/store');
 const { logResearchEvent } = require('../_utils/logger');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { sessionId, agentId, resolution, agentNotes } = req.body;
 
@@ -14,31 +10,29 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'sessionId, agentId, and resolution are required' });
     }
 
-    let session = store.sessions[sessionId];
+    let session = await store.getSession(sessionId);
     if (!session) {
-      store.sessions[sessionId] = {
-        userId: 'auto', platform: 'app', language: 'en', orderContext: {},
-        status: 'AI_ACTIVE', createdAt: new Date().toISOString(), messages: [], agentInfo: null
-      };
-      session = store.sessions[sessionId];
+      return res.status(404).json({ success: false, error: `Session ${sessionId} not found` });
     }
 
-    session.status = 'CLOSED';
+    await store.updateSession(sessionId, { status: 'CLOSED' });
 
     // Find and close ticket
     let resolvedTicketId = null;
-    const ticket = Object.values(store.tickets).find(t => t.sessionId === sessionId && t.status === 'HUMAN_CONNECTED');
+    const ticket = await store.findTicketBySession(sessionId, 'HUMAN_CONNECTED');
     if (ticket) {
-      ticket.status = 'CLOSED';
-      ticket.resolvedAt = new Date().toISOString();
-      ticket.resolvedBy = agentId;
-      ticket.resolution = resolution;
-      ticket.agentNotes = agentNotes || '';
+      await store.updateTicket(ticket.ticketId, {
+        status: 'CLOSED',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: agentId,
+        resolution,
+        agentNotes: agentNotes || ''
+      });
       resolvedTicketId = ticket.ticketId;
     }
 
     // Log session resolve event for research
-    logResearchEvent('SESSION_RESOLVE', {
+    await logResearchEvent('SESSION_RESOLVE', {
       sessionId,
       agentId,
       resolution,
@@ -61,4 +55,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

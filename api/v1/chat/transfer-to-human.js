@@ -1,12 +1,8 @@
-const allowCors = require('../_utils/cors');
+// api/v1/chat/transfer-to-human.js — Escalate session to human agent
 const store = require('../_utils/store');
 const { logResearchEvent } = require('../_utils/logger');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { sessionId, reason, priorityLevel, customerSummary } = req.body;
 
@@ -14,20 +10,20 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'sessionId and reason are required' });
     }
 
-    let session = store.sessions[sessionId];
+    let session = await store.getSession(sessionId);
     if (!session) {
-      store.sessions[sessionId] = {
-        userId: 'auto', platform: 'app', language: 'en', orderContext: {},
-        status: 'AI_ACTIVE', createdAt: new Date().toISOString(), messages: [], agentInfo: null
-      };
-      session = store.sessions[sessionId];
+      await store.createSession({
+        sessionId, userId: 'auto', platform: 'app', language: 'en',
+        orderContext: {}, status: 'AI_ACTIVE', messages: [], agentInfo: null
+      });
+      session = await store.getSession(sessionId);
     }
 
     if (session.status === 'PENDING_HUMAN' || session.status === 'HUMAN_CONNECTED') {
       return res.status(400).json({ success: false, error: `Session already escalated (Status: ${session.status})` });
     }
 
-    session.status = 'PENDING_HUMAN';
+    await store.updateSession(sessionId, { status: 'PENDING_HUMAN' });
 
     const ticketId = `TKT-${Date.now()}`;
     const createdAt = new Date().toISOString();
@@ -39,7 +35,7 @@ const handler = async (req, res) => {
       else if (reason === 'non_delivery' || reason === 'dispute') assignedPriority = 'HIGH';
     }
 
-    store.tickets[ticketId] = {
+    await store.createTicket({
       ticketId,
       sessionId,
       userId: session.userId,
@@ -48,16 +44,12 @@ const handler = async (req, res) => {
       customerSummary: customerSummary || `Agent transfer requested for reason: ${reason}`,
       status: 'PENDING_HUMAN',
       createdAt
-    };
+    });
 
-    const tickets = Object.values(store.tickets)
-      .filter(t => t.status === 'PENDING_HUMAN')
-      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    
-    const queuePosition = tickets.findIndex(t => t.ticketId === ticketId) + 1;
+    const queuePosition = await store.getQueuePosition(ticketId);
 
     // Log transfer event for research data collection
-    logResearchEvent('HUMAN_TRANSFER', {
+    await logResearchEvent('HUMAN_TRANSFER', {
       sessionId,
       userId: session.userId,
       ticketId,
@@ -82,4 +74,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

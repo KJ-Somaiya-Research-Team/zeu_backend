@@ -1,12 +1,8 @@
-const allowCors = require('../_utils/cors');
+// api/v1/agent/message.js — Agent sends message to customer
 const store = require('../_utils/store');
 const { logResearchEvent } = require('../_utils/logger');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { sessionId, agentId, message, actionType = 'text', refundAmount } = req.body;
 
@@ -14,13 +10,9 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'sessionId, agentId, and message are required' });
     }
 
-    let session = store.sessions[sessionId];
+    const session = await store.getSession(sessionId);
     if (!session) {
-      store.sessions[sessionId] = {
-        userId: 'auto', platform: 'app', language: 'en', orderContext: {},
-        status: 'AI_ACTIVE', createdAt: new Date().toISOString(), messages: [], agentInfo: null
-      };
-      session = store.sessions[sessionId];
+      return res.status(404).json({ success: false, error: `Session ${sessionId} not found` });
     }
 
     if (session.status !== 'HUMAN_CONNECTED') {
@@ -30,7 +22,7 @@ const handler = async (req, res) => {
     const timestamp = new Date().toISOString();
     const messageId = `msg_agt_${Date.now()}`;
 
-    const newMsg = {
+    await store.addMessage(sessionId, {
       id: messageId,
       role: 'agent',
       content: message,
@@ -38,12 +30,10 @@ const handler = async (req, res) => {
       source: 'human_agent',
       actionType,
       refundAmount: refundAmount || null
-    };
-
-    session.messages.push(newMsg);
+    });
 
     // Log agent message for research
-    logResearchEvent('AGENT_MESSAGE', {
+    await logResearchEvent('AGENT_MESSAGE', {
       sessionId,
       agentId,
       message,
@@ -64,4 +54,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

@@ -1,4 +1,4 @@
-const allowCors = require('../_utils/cors');
+// api/v1/chat/message.js — Send message in existing session
 const store = require('../_utils/store');
 const { logResearchEvent } = require('../_utils/logger');
 const { generateWithFallback } = require('../_utils/ai');
@@ -19,10 +19,6 @@ RULES:
 };
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { sessionId, message, classification = 'STANDARD', stream = false } = req.body;
 
@@ -34,20 +30,14 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Message exceeds maximum length of 2000 characters' });
     }
 
-    let session = store.sessions[sessionId];
+    let session = await store.getSession(sessionId);
     if (!session) {
-      // Auto-create session on Vercel (serverless functions don't share memory)
-      store.sessions[sessionId] = {
-        userId: 'auto',
-        platform: 'app',
-        language: 'en',
-        orderContext: {},
-        status: 'AI_ACTIVE',
-        createdAt: new Date().toISOString(),
-        messages: [],
-        agentInfo: null
-      };
-      session = store.sessions[sessionId];
+      // Auto-create session if not found (backward compat)
+      await store.createSession({
+        sessionId, userId: 'auto', platform: 'app', language: 'en',
+        orderContext: {}, status: 'AI_ACTIVE', messages: [], agentInfo: null
+      });
+      session = await store.getSession(sessionId);
     }
 
     if (session.status !== 'AI_ACTIVE') {
@@ -55,13 +45,14 @@ const handler = async (req, res) => {
     }
 
     const timestampUser = new Date().toISOString();
-    session.messages.push({
+    const userMsg = {
       id: `msg_u_${Date.now()}`,
       role: 'user',
       content: message,
       timestamp: timestampUser,
       source: 'customer'
-    });
+    };
+    await store.addMessage(sessionId, userMsg);
 
     const lowerPrompt = message.toLowerCase();
     const isLateOrderQuery = /\b(late|delay|delayed|deri|kab|when|where.*order|kitna time|status)\b/i.test(message) && 
@@ -71,12 +62,22 @@ const handler = async (req, res) => {
 
     let replyText = '';
     let isTransfer = false;
+    let transferReason = null;
     let targetModel = 'gemini-3.6-flash';
 
     if (isDirectEscalation) {
       replyText = "This issue cannot be handled by the chatbot. I am transferring you to a human agent immediately.";
       isTransfer = true;
       targetModel = "deterministic-guardrail";
+
+      // Detect specific reason from keywords
+      if (/\b(never received|not received|nahi mila|gaya hi nahi)\b/i.test(message)) {
+        transferReason = 'non_delivery';
+      } else if (/\b(insaan|human|agent|person|talk to human|connect to human|insan)\b/i.test(lowerPrompt)) {
+        transferReason = 'explicit_human_request';
+      } else {
+        transferReason = 'customer_escalation';
+      }
     } else {
       const systemPrompt = buildSystemPrompt(classification);
       
@@ -93,19 +94,26 @@ const handler = async (req, res) => {
 
       isTransfer = !isLateOrderQuery && replyText.includes('[TRANSFER]');
       replyText = replyText.replace('[TRANSFER]', '').trim();
+
+      if (isTransfer) {
+        transferReason = 'ai_triggered';
+      }
     }
 
     const timestampBot = new Date().toISOString();
-    session.messages.push({
+    const botMsg = {
       id: `msg_b_${Date.now()}`,
       role: 'model',
       content: replyText,
       timestamp: timestampBot,
       source: 'ai'
-    });
+    };
+    await store.addMessage(sessionId, botMsg);
+
+    const messageCount = await store.getMessageCount(sessionId);
 
     // Log interaction for research data collection
-    logResearchEvent('AI_MESSAGE', {
+    await logResearchEvent('AI_MESSAGE', {
       sessionId,
       userId: session.userId,
       platform: session.platform,
@@ -118,17 +126,16 @@ const handler = async (req, res) => {
       isLateOrderQuery,
       isDirectEscalation,
       responseTimestamp: timestampBot,
-      messageCount: session.messages.length
+      messageCount
     });
 
-    // SSE Streaming: send pre-generated reply as stream events
+    // SSE Streaming
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       
       res.write(`data: ${JSON.stringify({ type: "chunk", text: replyText })}\n\n`);
-
       res.write(`data: ${JSON.stringify({ type: "done", is_transfer: isTransfer, model_used: targetModel })}\n\n`);
       res.end();
       return;
@@ -141,7 +148,7 @@ const handler = async (req, res) => {
       is_transfer: isTransfer,
       model_used: targetModel,
       classification_detected: classification,
-      transferReason: isTransfer ? 'explicit_human_request' : null,
+      transferReason,
       timestamp: timestampBot
     });
 
@@ -151,4 +158,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

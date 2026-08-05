@@ -1,10 +1,11 @@
-const allowCors = require('./v1/_utils/cors');
+// api/index.js — Health check endpoint
 
 const handler = (req, res) => {
   return res.status(200).json({
     status: 'online',
-    version: '2.1.0',
+    version: '3.0.0',
     message: 'Zeu Chatbot API Backend is running!',
+    runtime: 'Render (persistent)',
     timestamp: new Date().toISOString(),
     endpoints: [
       'POST /api/generate',
@@ -17,9 +18,10 @@ const handler = (req, res) => {
       'GET  /api/v1/agent/queue',
       'POST /api/v1/agent/claim-ticket',
       'POST /api/v1/agent/message',
-      'POST /api/v1/chat/resolve'
+      'POST /api/v1/chat/resolve',
+      'PATCH /api/v1/agent/update-status'
     ]
   });
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

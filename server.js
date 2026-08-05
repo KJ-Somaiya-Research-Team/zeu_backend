@@ -1,104 +1,71 @@
 try {
   require('dotenv').config();
 } catch (e) {
-  // dotenv not installed — try native loadEnvFile (Node 22+)
   try { process.loadEnvFile(); } catch (_) { /* .env missing or old Node */ }
 }
 
-const connectDB = require('./api/v1/_utils/db');
-const http = require('http');
+const express = require('express');
+const cors = require('cors');
+const { connectDB } = require('./db');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ── Middleware ──
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ── Import handlers ──
 const indexHandler = require('./api/index');
 const generateHandler = require('./api/generate');
 const feedbackHandler = require('./api/feedback');
-
-// Connect to MongoDB Atlas
-connectDB();
-
-// Import v1 handlers
 const startSessionHandler = require('./api/v1/chat/session/start');
 const chatMessageHandler = require('./api/v1/chat/message');
-const chatHistoryHandler = require('./api/v1/chat/history/[sessionId]');
-const chatStatusHandler = require('./api/v1/chat/status/[sessionId]');
+const chatHistoryHandler = require('./api/v1/chat/history');
+const chatStatusHandler = require('./api/v1/chat/status');
 const transferHandler = require('./api/v1/chat/transfer-to-human');
 const resolveHandler = require('./api/v1/chat/resolve');
 const agentQueueHandler = require('./api/v1/agent/queue');
 const claimTicketHandler = require('./api/v1/agent/claim-ticket');
 const agentMessageHandler = require('./api/v1/agent/message');
+const updateStatusHandler = require('./api/v1/agent/update-status');
 
-const PORT = process.env.PORT || 3000;
+// ── Routes ──
+app.get('/api', indexHandler);
+app.get('/', indexHandler);
 
-const server = http.createServer((req, res) => {
-  // Polyfill res.status and res.json for Vercel handler compatibility
-  if (!res.status) {
-    res.status = function (code) {
-      this.statusCode = code;
-      return this;
-    };
-  }
-  if (!res.json) {
-    res.json = function (data) {
-      this.setHeader('Content-Type', 'application/json');
-      this.end(JSON.stringify(data));
-      return this;
-    };
-  }
+app.all('/api/generate', (req, res, next) => req.method === 'POST' ? generateHandler(req, res, next) : res.status(405).json({error: 'Method Not Allowed'}));
+app.post('/api/feedback', feedbackHandler);
 
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost:' + PORT}`);
-  const pathname = url.pathname;
+app.post('/api/v1/chat/session/start', startSessionHandler);
+app.post('/api/v1/chat/message', chatMessageHandler);
+app.get('/api/v1/chat/history/:sessionId', chatHistoryHandler);
+app.get('/api/v1/chat/status/:sessionId', chatStatusHandler);
+app.post('/api/v1/chat/transfer-to-human', transferHandler);
+app.post('/api/v1/chat/resolve', resolveHandler);
 
-  // Parse query params
-  req.query = req.query || {};
-  url.searchParams.forEach((val, key) => { req.query[key] = val; });
+app.get('/api/v1/agent/queue', agentQueueHandler);
+app.post('/api/v1/agent/claim-ticket', claimTicketHandler);
+app.post('/api/v1/agent/message', agentMessageHandler);
+app.patch('/api/v1/agent/update-status', updateStatusHandler);
 
-  // Helper to parse JSON body for POST/PUT requests
-  const runWithJsonBody = (handler) => {
-    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk.toString(); });
-      req.on('end', () => {
-        try { req.body = body ? JSON.parse(body) : {}; }
-        catch (e) { req.body = {}; }
-        handler(req, res);
-      });
-    } else {
-      handler(req, res);
-    }
-  };
-
-  // Route dispatch
-  if (pathname === '/api/generate') {
-    runWithJsonBody(generateHandler);
-  } else if (pathname === '/api/feedback') {
-    feedbackHandler(req, res);
-  } else if (pathname === '/api/v1/chat/session/start') {
-    runWithJsonBody(startSessionHandler);
-  } else if (pathname === '/api/v1/chat/message') {
-    runWithJsonBody(chatMessageHandler);
-  } else if (pathname.startsWith('/api/v1/chat/history/')) {
-    req.query.sessionId = pathname.replace('/api/v1/chat/history/', '').split('?')[0];
-    runWithJsonBody(chatHistoryHandler);
-  } else if (pathname.startsWith('/api/v1/chat/status/')) {
-    req.query.sessionId = pathname.replace('/api/v1/chat/status/', '').split('?')[0];
-    runWithJsonBody(chatStatusHandler);
-  } else if (pathname === '/api/v1/chat/transfer-to-human') {
-    runWithJsonBody(transferHandler);
-  } else if (pathname === '/api/v1/chat/resolve') {
-    runWithJsonBody(resolveHandler);
-  } else if (pathname === '/api/v1/agent/queue') {
-    agentQueueHandler(req, res);
-  } else if (pathname === '/api/v1/agent/claim-ticket') {
-    runWithJsonBody(claimTicketHandler);
-  } else if (pathname === '/api/v1/agent/message') {
-    runWithJsonBody(agentMessageHandler);
-  } else if (pathname === '/' || pathname === '/api' || pathname === '/api/index') {
-    indexHandler(req, res);
-  } else {
-    res.status(404).json({ error: 'Endpoint Not Found' });
-  }
+// ── 404 catch-all ──
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint Not Found' });
 });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Zeu Backend running at http://localhost:${PORT}`);
-  console.log(`📍 Health: GET http://localhost:${PORT}/api`);
-  console.log(`📍 ${Object.keys(require('./api/v1/_utils/store').sessions).length} active sessions`);
-});
+// ── Start server ──
+const start = async () => {
+  const db = await connectDB();
+  if (!db) {
+    console.warn('⚠️  Running with in-memory store (no MONGO_URI)');
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Zeu Backend running at http://localhost:${PORT}`);
+    console.log(`📍 Health: GET http://localhost:${PORT}/api`);
+  });
+};
+
+start();

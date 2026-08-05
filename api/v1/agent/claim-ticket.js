@@ -1,12 +1,8 @@
-const allowCors = require('../_utils/cors');
+// api/v1/agent/claim-ticket.js — Agent claims a support ticket
 const store = require('../_utils/store');
 const { logResearchEvent } = require('../_utils/logger');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { ticketId, agentId } = req.body;
 
@@ -14,7 +10,7 @@ const handler = async (req, res) => {
       return res.status(400).json({ success: false, error: 'ticketId and agentId are required' });
     }
 
-    const ticket = store.tickets[ticketId];
+    const ticket = await store.getTicket(ticketId);
     if (!ticket) {
       return res.status(404).json({ success: false, error: `Ticket ${ticketId} not found` });
     }
@@ -27,29 +23,34 @@ const handler = async (req, res) => {
       });
     }
 
-    const session = store.sessions[ticket.sessionId];
+    const session = await store.getSession(ticket.sessionId);
     if (!session) {
-      return res.status(404).json({ success: false, error: `Session associated with ticket not found` });
+      return res.status(404).json({ success: false, error: 'Session associated with ticket not found' });
     }
 
-    // Update statuses
-    ticket.status = 'HUMAN_CONNECTED';
-    ticket.agentInfo = { agentId, claimedAt: new Date().toISOString() };
-    
-    session.status = 'HUMAN_CONNECTED';
-    session.agentInfo = { agentId, agentName: `Agent ${agentId}`, connectedSince: ticket.agentInfo.claimedAt };
+    const claimedAt = new Date().toISOString();
+    const agentInfo = { agentId, claimedAt };
+
+    // Update ticket
+    await store.updateTicket(ticketId, { status: 'HUMAN_CONNECTED', agentInfo });
+
+    // Update session
+    const sessionAgentInfo = { agentId, agentName: `Agent ${agentId}`, connectedSince: claimedAt };
+    await store.updateSession(ticket.sessionId, { status: 'HUMAN_CONNECTED', agentInfo: sessionAgentInfo });
 
     // Inject system message into chat
-    session.messages.push({
+    await store.addMessage(ticket.sessionId, {
       id: `msg_sys_${Date.now()}`,
-      role: 'agent', // We use 'agent' for human agent messages
-      content: `A human agent (${session.agentInfo.agentName}) has joined the chat.`,
-      timestamp: new Date().toISOString(),
+      role: 'agent',
+      content: `A human agent (Agent ${agentId}) has joined the chat.`,
+      timestamp: claimedAt,
       source: 'system'
     });
 
+    const messageCount = await store.getMessageCount(ticket.sessionId);
+
     // Log claim event for research
-    logResearchEvent('AGENT_CLAIM', {
+    await logResearchEvent('AGENT_CLAIM', {
       ticketId,
       sessionId: ticket.sessionId,
       agentId,
@@ -68,7 +69,7 @@ const handler = async (req, res) => {
         orderId: session.orderContext.orderId || null,
         issueType: ticket.reason,
         conversationSummary: ticket.customerSummary,
-        messageCount: session.messages.length
+        messageCount
       },
       message: 'Session assigned. You are now connected to the customer.'
     });
@@ -79,4 +80,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

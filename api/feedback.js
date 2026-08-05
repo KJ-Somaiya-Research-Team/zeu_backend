@@ -1,44 +1,32 @@
+// api/feedback.js — User feedback/rating endpoint
 const multiparty = require('multiparty');
-
-// Enable CORS for Vercel
-const allowCors = require('./v1/_utils/cors');
-
-// In Vercel serverless, we must disable the default body parser to handle multipart form data manually
-const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+const { logResearchEvent } = require('./v1/_utils/logger');
+const store = require('./v1/_utils/store');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   const form = new multiparty.Form();
 
-  form.parse(req, (err, fields, files) => {
+  form.parse(req, async (err, fields, files) => {
     if (err) {
       console.error('Error parsing form:', err);
       return res.status(500).json({ error: 'Failed to parse feedback submission' });
     }
 
     try {
-      // In a real application, you would upload the files (e.g., to Vercel Blob or AWS S3)
-      // and save the fields to a database (e.g., MongoDB, PostgreSQL, Convex).
-      
       console.log('--- Received Feedback Submission ---');
       console.log('Fields:', fields);
+
+      // Save feedback to database
+      const sessionId = fields.sessionId ? fields.sessionId[0] : null;
+      const rating = fields.rating ? parseInt(fields.rating[0]) : null;
+      const comment = fields.comment ? fields.comment[0] : null;
+
+      await store.saveFeedback({ sessionId, rating, comment, fields });
+
+      // Log research event
+      await logResearchEvent('USER_FEEDBACK', { sessionId, rating, comment, filesCount: Object.keys(files).length });
       
-      // Log research event in JSON format
-      try {
-        const { logResearchEvent } = require('./v1/_utils/logger');
-        logResearchEvent('USER_FEEDBACK', { fields, filesCount: Object.keys(files).length });
-      } catch (logErr) {
-        console.error('Logger fallback error:', logErr.message);
-      }
-      
-      // Log received files (images)
+      // Log received files
       Object.keys(files).forEach((key) => {
         const uploadedFiles = files[key];
         console.log(`Received ${uploadedFiles.length} file(s) for section: ${key}`);
@@ -60,4 +48,4 @@ const handler = async (req, res) => {
   });
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

@@ -8,10 +8,6 @@
 # Dependency directories
 node_modules/
 
-# Vercel deployment artifacts
-.vercel/
-.vercel_config/
-
 # Logs and OS files
 *.log
 npm-debug.log*

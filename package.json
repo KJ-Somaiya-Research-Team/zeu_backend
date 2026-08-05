@@ -1,10 +1,11 @@
 {
   "name": "zeu",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Zeu AI Chatbot Backend",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "build": "echo 'No build step required'",
     "test:api": "node scripts/test-api.js"
   },
   "engines": {
@@ -15,8 +16,7 @@
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "express": "^5.2.1",
-    "mongoose": "^9.9.1",
-    "multiparty": "^4.3.0",
-    "vercel": "^57.0.0"
+    "mongodb": "^6.16.0",
+    "multiparty": "^4.3.0"
   }
 }

@@ -1,13 +1,6 @@
-const allowCors = require('./v1/_utils/cors');
+// api/generate.js — Stateless AI chat endpoint
 const { generateWithFallback } = require('./v1/_utils/ai');
-
-// Research data logger (import with fallback for backward compat)
-let logResearchEvent;
-try {
-  logResearchEvent = require('./v1/_utils/logger').logResearchEvent;
-} catch (e) {
-  logResearchEvent = () => {}; // no-op if logger not found
-}
+const { logResearchEvent } = require('./v1/_utils/logger');
 
 // Base system prompt extracted from nexkirana_ai_modules research
 const buildSystemPrompt = (classification = 'STANDARD') => {
@@ -34,10 +27,6 @@ For disputes (Damaged Product, Expired Item, Wrong Item, Veg/Non-Veg Mixup, Food
 };
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { prompt, classification = 'STANDARD' } = req.body;
     
@@ -79,15 +68,12 @@ const handler = async (req, res) => {
 
     const systemPrompt = buildSystemPrompt(classification);
     
-    let replyText = '';
-    let targetModel = '';
-    
     const aiResult = await generateWithFallback(prompt, {
       systemInstruction: systemPrompt,
       temperature: classification === 'CRITICAL' ? 0.4 : 0.7,
     });
-    replyText = aiResult.text;
-    targetModel = aiResult.model;
+    let replyText = aiResult.text;
+    const targetModel = aiResult.model;
 
     // Check if AI output triggered transfer (unless it was a late order query)
     const isTransfer = !isLateOrderQuery && replyText.includes('[TRANSFER]');
@@ -120,4 +106,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;

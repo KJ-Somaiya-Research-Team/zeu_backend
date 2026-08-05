@@ -1,12 +1,8 @@
-const allowCors = require('../../_utils/cors');
+// api/v1/chat/session/start.js — Create new chat session
 const store = require('../../_utils/store');
 const { logResearchEvent } = require('../../_utils/logger');
 
 const handler = async (req, res) => {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
   try {
     const { userId, platform = 'web', language = 'en', orderContext = {} } = req.body;
 
@@ -25,17 +21,16 @@ const handler = async (req, res) => {
 
     const createdAt = new Date().toISOString();
 
-    if (!store.sessions) store.sessions = {};
-    store.sessions[sessionId] = {
+    await store.createSession({
+      sessionId,
       userId,
       platform,
       language,
       orderContext,
       status: 'AI_ACTIVE',
-      createdAt,
       messages: [
         {
-          id: `msg_welcome`,
+          id: 'msg_welcome',
           role: 'model',
           content: welcomeMessage,
           timestamp: createdAt,
@@ -43,10 +38,10 @@ const handler = async (req, res) => {
         }
       ],
       agentInfo: null
-    };
+    });
 
     // Log session start for research data collection
-    logResearchEvent('SESSION_START', {
+    await logResearchEvent('SESSION_START', {
       sessionId,
       userId,
       platform,
@@ -70,4 +65,4 @@ const handler = async (req, res) => {
   }
 };
 
-module.exports = allowCors(handler);
+module.exports = handler;
